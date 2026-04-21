@@ -1,1 +1,115 @@
+import { NextRequest, NextResponse } from 'next/server'
 
+export async function POST(req: NextRequest) {
+  try {
+    const body = await req.json()
+    const { channelName, objective, audience, keyword, duration, quickMode, apiKey } = body
+
+    const key = apiKey || process.env.ANTHROPIC_API_KEY
+    if (!key) {
+      return NextResponse.json(
+        { error: 'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' },
+        { status: 400 }
+      )
+    }
+
+    const today      = new Date()
+    const startDate  = new Date(today)
+    startDate.setDate(today.getDate() + 1)
+    const postsCount = Math.ceil(duration / 7) * 3
+
+    const systemPrompt = `You are a world-class social media content strategist specialising in Indian education and career content for Instagram and YouTube. You always return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.`
+
+    const userPrompt = quickMode
+      ? `Generate a quick ${duration}-day Instagram content plan.
+Channel: ${channelName}
+Objective: ${objective}
+Audience: ${audience}
+Topic: ${keyword}
+Posts: ${postsCount} total. Rotate: Reels on Tue, Carousels on Thu, Long-form on Sat. Start: ${startDate.toDateString()}.
+
+Return ONLY this JSON (no markdown):
+{
+  "posts": [
+    { "day":1,"week":1,"format":"Reel","pillar":"string","title":"string","hook":"string","hashtags":"#tag1 #tag2 #tag3","post_date":"Tue, 22 Apr 2026" }
+  ]
+}`
+      : `Generate a full ${duration}-day Instagram content plan.
+Channel: ${channelName}
+Objective: ${objective}
+Target Audience: ${audience}
+Keyword/Topic: ${keyword}
+Total posts: ${postsCount}
+Start date: ${startDate.toDateString()}
+
+Rules:
+- 3 posts/week: Reel on Tuesday, Carousel on Thursday, Long-form on Saturday
+- 4 meaningful content pillars specific to the topic
+- Hook formula: Lead with audience belief → break it → replace with truth
+- Scripts: full production-ready (timing cues for Reels, slide-by-slide for Carousels, chapter timestamps for Long-form)
+- AI prompts: detailed enough for Midjourney/DALL-E with style, colors, aspect ratio (9:16 Reels, 4:5 Carousels, 16:9 Long-form)
+- Hashtags: 5-8 per post, mix niche + broad
+- Metric targets: realistic for a growing channel (reach 2k–15k, saves 80–500, shares 40–300)
+- Priority 5 = must-post hero content, 4 = high value, 3 = standard
+
+Return ONLY this JSON (no markdown):
+{
+  "pillars": ["pillar1","pillar2","pillar3","pillar4"],
+  "strategy": "2-3 sentence overall content strategy",
+  "hook_formula": "the specific hook formula for this audience",
+  "posts": [
+    {
+      "day": 1,
+      "week": 1,
+      "format": "Reel",
+      "pillar": "pillar name",
+      "title": "post title",
+      "hook": "opening hook line",
+      "content_brief": "2-3 sentence content brief",
+      "script": "full production script with timing cues",
+      "ai_prompt": "detailed image/video generation prompt",
+      "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5",
+      "cta": "call to action",
+      "post_date": "Tue, 22 Apr 2026",
+      "reach_target": 5000,
+      "saves_target": 200,
+      "shares_target": 100,
+      "comments_target": 80,
+      "plays_target": 8000,
+      "priority": 4,
+      "notes": "production note"
+    }
+  ]
+}`
+
+    const response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type':    'application/json',
+        'x-api-key':       key,
+        'anthropic-version': '2023-06-01',
+      },
+      body: JSON.stringify({
+        model:      'claude-opus-4-5',
+        max_tokens: 8000,
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content: userPrompt }],
+      }),
+    })
+
+    if (!response.ok) {
+      const err = await response.text()
+      return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
+    }
+
+    const data  = await response.json()
+    const text  = data.content[0].text.trim()
+    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
+    const plan  = JSON.parse(clean)
+
+    return NextResponse.json(plan)
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'Unknown error'
+    return NextResponse.json({ error: message }, { status: 500 })
+  }
+}
