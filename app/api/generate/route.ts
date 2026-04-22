@@ -7,51 +7,56 @@ export async function POST(req: NextRequest) {
 
     const key = apiKey || process.env.ANTHROPIC_API_KEY
     if (!key) {
-      return NextResponse.json({ error: 'No API key provided. Add your Anthropic API key in Settings.' }, { status: 400 })
+      return NextResponse.json(
+        { error: 'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' },
+        { status: 400 }
+      )
     }
 
-    const today = new Date()
-    const startDate = new Date(today)
+    const today      = new Date()
+    const startDate  = new Date(today)
     startDate.setDate(today.getDate() + 1)
+    const postsCount = Math.ceil(duration / 7) * 3
 
-    const systemPrompt = quickMode
-      ? `You are a social media content strategist. Return ONLY valid JSON — no markdown, no explanation.`
-      : `You are a world-class social media content strategist specialising in Indian education and career content. Return ONLY valid JSON — no markdown, no explanation, no code blocks.`
-
-    const postDays = ['Tuesday', 'Thursday', 'Saturday']
-    const formats = ['Reel', 'Carousel', 'Long-form']
+    const systemPrompt = `You are a world-class social media content strategist specialising in Indian education and career content for Instagram and YouTube. You always return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.`
 
     const userPrompt = quickMode
-      ? `Generate a quick content plan for:
+      ? `Generate a quick ${duration}-day Instagram content plan.
 Channel: ${channelName}
 Objective: ${objective}
 Audience: ${audience}
-Keyword/Topic: ${keyword}
-Duration: ${duration} days
+Topic: ${keyword}
+Posts: ${postsCount} total. Rotate: Reels on Tue, Carousels on Thu, Long-form on Sat. Start: ${startDate.toDateString()}.
 
-Return JSON: { "posts": [ { "day": 1, "week": 1, "format": "Reel", "pillar": "string", "title": "string", "hook": "string", "hashtags": "string", "post_date": "string" } ] }
-Generate ${Math.ceil(duration / 7) * 3} posts total. Rotate formats: Reel on Tuesdays, Carousel on Thursdays, Long-form on Saturdays. Post dates start from ${startDate.toDateString()}.`
-      : `Generate a full ${duration}-day content plan for:
+Return ONLY this JSON (no markdown):
+{
+  "posts": [
+    { "day":1,"week":1,"format":"Reel","pillar":"string","title":"string","hook":"string","hashtags":"#tag1 #tag2 #tag3","post_date":"Tue, 22 Apr 2026" }
+  ]
+}`
+      : `Generate a full ${duration}-day Instagram content plan.
 Channel: ${channelName}
 Objective: ${objective}
 Target Audience: ${audience}
 Keyword/Topic: ${keyword}
+Total posts: ${postsCount}
+Start date: ${startDate.toDateString()}
 
 Rules:
-- Post 3 times/week: Tuesdays (Reel), Thursdays (Carousel), Saturdays (Long-form)
-- Create ${Math.ceil(duration / 7) * 3} posts total
-- Start dates from ${startDate.toDateString()}
-- 4 content pillars relevant to ${keyword}
-- Each post must drive a specific emotion: curiosity, urgency, trust, or FOMO
-- Scripts must be production-ready with timing cues for Reels, slide-by-slide for Carousels, chapter timestamps for Long-form
-- AI prompts must be detailed enough for Midjourney/DALL-E with aspect ratio, style, color palette
-- Hashtags: 5-8 relevant, mix of niche and broad
+- 3 posts/week: Reel on Tuesday, Carousel on Thursday, Long-form on Saturday
+- 4 meaningful content pillars specific to the topic
+- Hook formula: Lead with audience belief → break it → replace with truth
+- Scripts: full production-ready (timing cues for Reels, slide-by-slide for Carousels, chapter timestamps for Long-form)
+- AI prompts: detailed enough for Midjourney/DALL-E with style, colors, aspect ratio (9:16 Reels, 4:5 Carousels, 16:9 Long-form)
+- Hashtags: 5-8 per post, mix niche + broad
+- Metric targets: realistic for a growing channel (reach 2k–15k, saves 80–500, shares 40–300)
+- Priority 5 = must-post hero content, 4 = high value, 3 = standard
 
-Return JSON:
+Return ONLY this JSON (no markdown):
 {
-  "pillars": ["pillar1", "pillar2", "pillar3", "pillar4"],
-  "strategy": "2-3 sentence overall strategy",
-  "hook_formula": "the hook formula for this audience",
+  "pillars": ["pillar1","pillar2","pillar3","pillar4"],
+  "strategy": "2-3 sentence overall content strategy",
+  "hook_formula": "the specific hook formula for this audience",
   "posts": [
     {
       "day": 1,
@@ -61,18 +66,18 @@ Return JSON:
       "title": "post title",
       "hook": "opening hook line",
       "content_brief": "2-3 sentence content brief",
-      "script": "full production script with cues",
-      "ai_prompt": "detailed image/video generation prompt with aspect ratio and style",
+      "script": "full production script with timing cues",
+      "ai_prompt": "detailed image/video generation prompt",
       "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5",
-      "cta": "call to action text",
-      "post_date": "Day Name, DD Mon YYYY",
+      "cta": "call to action",
+      "post_date": "Tue, 22 Apr 2026",
       "reach_target": 5000,
       "saves_target": 200,
       "shares_target": 100,
       "comments_target": 80,
       "plays_target": 8000,
       "priority": 4,
-      "notes": "brief production note"
+      "notes": "production note"
     }
   ]
 }`
@@ -80,16 +85,16 @@ Return JSON:
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': key,
-        'anthropic-version': '2023-06-01'
+        'Content-Type':    'application/json',
+        'x-api-key':       key,
+        'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
+        model:      'claude-opus-4-5',
         max_tokens: 8000,
-        messages: [{ role: 'user', content: userPrompt }],
-        system: systemPrompt
-      })
+        system:     systemPrompt,
+        messages:   [{ role: 'user', content: userPrompt }],
+      }),
     })
 
     if (!response.ok) {
@@ -97,10 +102,10 @@ Return JSON:
       return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
     }
 
-    const data = await response.json()
-    const text = data.content[0].text.trim()
+    const data  = await response.json()
+    const text  = data.content[0].text.trim()
     const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    const plan = JSON.parse(clean)
+    const plan  = JSON.parse(clean)
 
     return NextResponse.json(plan)
   } catch (err: unknown) {
