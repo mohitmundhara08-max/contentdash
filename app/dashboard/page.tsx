@@ -79,7 +79,7 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
   const [showS,setShowS]=useState(false)
   const [prog,setProg]=useState('')
   const [err,setErr]=useState('')
-  const n=Math.ceil(dur/7)*3
+  const n=Math.max(Math.floor(dur/7)*3,3)
 
   async function getSuggestions(){
     if(!apiKey)return setErr('Add API key in ⚙️ Settings first')
