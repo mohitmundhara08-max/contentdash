@@ -7,8 +7,6 @@ export const dynamic = 'force-dynamic'
 const SONNET = 'claude-sonnet-4-6'
 const HAIKU  = 'claude-haiku-4-5-20251001'
 
-// ── Helpers ──────────────────────────────────────────────────────────────────
-
 function buildDates(n: number): string[] {
   const dates: string[] = []
   const d = new Date()
@@ -27,11 +25,8 @@ function parseJSON(raw: string): Record<string, unknown> {
   try { return JSON.parse(t) } catch { /**/ }
   const s = t.indexOf('{'), e = t.lastIndexOf('}')
   if (s !== -1 && e > s) try { return JSON.parse(t.slice(s, e + 1)) } catch { /**/ }
-  if (t.endsWith(',')) { t = t.slice(0, -1); try { return JSON.parse(t + ']}') } catch { /**/ } }
-  throw new Error('Response was cut off — try a shorter duration or Quick mode')
+  throw new Error('Response was cut off — try Quick mode or a shorter duration')
 }
-
-// ── Stream from Anthropic, collect full text ──────────────────────────────────
 
 async function callAnthropic(key: string, model: string, system: string, prompt: string, maxTokens: number): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
@@ -64,16 +59,14 @@ async function callAnthropic(key: string, model: string, system: string, prompt:
   return text
 }
 
-// ── Core streaming response ───────────────────────────────────────────────────
-// Writes first byte immediately → Vercel timer satisfied → no timeout possible
-
-function streamResponse(key: string, model: string, system: string, prompt: string, maxTokens: number, validate?: (d: Record<string,unknown>) => void): Response {
+// Returns streaming Response — first byte in <1s so Vercel never times out
+function streamIt(key: string, model: string, system: string, prompt: string, maxTokens: number, validate?: (d: Record<string,unknown>) => void): Response {
   const enc = new TextEncoder()
   const { readable, writable } = new TransformStream()
   const writer = writable.getWriter()
   ;(async () => {
     try {
-      await writer.write(enc.encode(' '))  // first byte in <1s → Vercel happy
+      await writer.write(enc.encode(' ')) // keepalive byte → Vercel timer satisfied
       const raw  = await callAnthropic(key, model, system, prompt, maxTokens)
       const data = parseJSON(raw)
       if (validate) validate(data)
@@ -89,10 +82,9 @@ function streamResponse(key: string, model: string, system: string, prompt: stri
   return new Response(readable, { headers: { 'Content-Type': 'application/json' } })
 }
 
-const SYS_JSON = 'You are a JSON API. Output ONLY valid JSON starting with {. No markdown. No explanation. No truncation — always close all brackets.'
+const SYS = 'You are a JSON API. Output ONLY valid complete JSON starting with {. Fill ALL fields with real, specific content. Never use placeholder text like "str" or "string". Never truncate.'
 
-// ── Actions ───────────────────────────────────────────────────────────────────
-
+// ── GENERATE ─────────────────────────────────────────────────────────────────
 function doGenerate(b: Record<string,unknown>, key: string): Response {
   const name = b.channelName as string
   const obj  = b.objective   as string
@@ -100,76 +92,202 @@ function doGenerate(b: Record<string,unknown>, key: string): Response {
   const kw   = (b.keyword as string) || ''
   const dur  = Number(b.duration) || 30
   const qm   = Boolean(b.quickMode)
-
-  // Use Math.floor to match UI labels: 7→3, 14→6, 30→12, 60→24
-  const n     = Math.max(Math.floor(dur / 7) * 3, 3)
+  const n    = Math.max(Math.floor(dur / 7) * 3, 3)
   const dates = buildDates(n)
 
   if (qm) {
-    // QUICK MODE: Haiku, minimal fields, very fast (~3s)
-    const prompt = `Create a ${dur}-day Instagram content calendar, exactly ${n} posts.
-Channel: ${name} | Goal: ${obj} | Audience: ${aud}
-${kw ? `Topic: ${kw}` : 'Choose the most engaging topics for this audience.'}
-Format: Reel=Tue Carousel=Thu Long-form=Sat
-Post dates: ${dates.join(' | ')}
-Output JSON (exactly ${n} posts in the array):
-{"pillars":["p1","p2","p3","p4"],"strategy":"1 sentence","hook_formula":"hook formula","posts":[{"day":1,"week":1,"format":"Reel","pillar":"p1","title":"title","hook":"Hinglish hook","hashtags":"#t1 #t2 #t3 #t4 #t5","cta":"cta","post_date":"${dates[0]}","reach_target":5000,"saves_target":150,"shares_target":80,"comments_target":60,"plays_target":8000,"priority":4,"notes":"","content_brief":"","script":"","ai_prompt":""}]}`
-    return streamResponse(key, HAIKU, SYS_JSON, prompt, n * 120 + 400,
-      d => { if (!Array.isArray((d as {posts?:unknown[]}).posts)) throw new Error('No posts returned') })
-  }
-
-  // FULL MODE: Sonnet, all fields, streaming handles time
-  const prompt = `Create a ${dur}-day Instagram content calendar, exactly ${n} posts.
+    // QUICK: Haiku, minimal fields only, ~3 seconds
+    const prompt = `Create a ${dur}-day Instagram content plan with ${n} posts.
 Channel: ${name} | Goal: ${obj} | Audience: ${aud}
 ${kw ? `Topic: ${kw}` : 'Choose the most viral topics for this audience.'}
-Format rotation: Reel=Tuesday Carousel=Thursday Long-form=Saturday
-Post dates in order: ${dates.join(' | ')}
-Output JSON (exactly ${n} posts, all fields filled):
-{"pillars":["Discovery","Authority","Community","Conversion"],"strategy":"2 sentence strategy","hook_formula":"specific hook formula for this audience","posts":[{"day":1,"week":1,"format":"Reel","pillar":"Discovery","title":"specific post title","hook":"Hinglish scroll-stopping hook","content_brief":"2-3 sentence brief","hashtags":"#t1 #t2 #t3 #t4 #t5","cta":"call to action","post_date":"${dates[0]}","reach_target":5000,"saves_target":200,"shares_target":100,"comments_target":80,"plays_target":8000,"priority":4,"notes":""}]}`
+Format: Reel on Tue, Carousel on Thu, Long-form on Sat
+Post dates: ${dates.join(' | ')}
 
+Reply with ONLY this JSON, filling every field with real specific content:
+{
+  "pillars": ["Pillar Name 1", "Pillar Name 2", "Pillar Name 3", "Pillar Name 4"],
+  "strategy": "Write 1 real sentence about the content strategy.",
+  "hook_formula": "Write the specific hook formula for this audience.",
+  "posts": [
+    {
+      "day": 1, "week": 1, "format": "Reel", "pillar": "Pillar Name 1",
+      "title": "Write the actual post title here",
+      "hook": "Write the actual Hinglish hook line here",
+      "content_brief": "", "script": "", "ai_prompt": "",
+      "hashtags": "#actualHashtag1 #actualHashtag2 #actualHashtag3 #actualHashtag4 #actualHashtag5",
+      "cta": "Write the actual call to action",
+      "post_date": "${dates[0]}",
+      "reach_target": 5000, "saves_target": 150, "shares_target": 80, "comments_target": 60, "plays_target": 8000,
+      "priority": 4, "notes": ""
+    }
+  ]
+}`
+    return streamIt(key, HAIKU, SYS, prompt, n * 130 + 400,
+      d => { if (!Array.isArray((d as {posts?:unknown[]}).posts)) throw new Error('No posts returned — try again') })
+  }
+
+  // FULL: Sonnet, all fields, scripts loaded on-demand per post
+  const prompt = `Create a ${dur}-day Instagram content calendar with ${n} posts.
+Channel: ${name} | Goal: ${obj} | Audience: ${aud}
+${kw ? `Topic: ${kw}` : 'Choose the most viral, specific topics for this audience.'}
+Format: Reel=Tuesday Carousel=Thursday Long-form=Saturday
+Post dates: ${dates.join(' | ')}
+
+Reply with ONLY this JSON, filling EVERY field with real, specific, actionable content:
+{
+  "pillars": ["Specific Pillar 1", "Specific Pillar 2", "Specific Pillar 3", "Specific Pillar 4"],
+  "strategy": "Write 2 real sentences about the content strategy for this channel.",
+  "hook_formula": "Write the exact hook formula: e.g. Start with audience belief → break it → deliver truth",
+  "posts": [
+    {
+      "day": 1, "week": 1, "format": "Reel", "pillar": "Pillar Name",
+      "title": "Write the actual specific post title",
+      "hook": "Write the actual Hinglish scroll-stopping hook",
+      "content_brief": "Write 2-3 sentences describing exactly what this post covers.",
+      "script": "", "ai_prompt": "",
+      "hashtags": "#actualTag1 #actualTag2 #actualTag3 #actualTag4 #actualTag5",
+      "cta": "Write the specific call to action",
+      "post_date": "${dates[0]}",
+      "reach_target": 5000, "saves_target": 200, "shares_target": 100,
+      "comments_target": 80, "plays_target": 8000, "priority": 4, "notes": ""
+    }
+  ]
+}`
   const maxTok = Math.min(n * 480 + 500, 8000)
-  return streamResponse(key, SONNET, SYS_JSON, prompt, maxTok,
-    d => { if (!Array.isArray((d as {posts?:unknown[]}).posts)) throw new Error('No posts returned') })
+  return streamIt(key, SONNET, SYS, prompt, maxTok,
+    d => { if (!Array.isArray((d as {posts?:unknown[]}).posts)) throw new Error('No posts returned — try again') })
 }
 
+// ── SCRIPT (on-demand per post) ───────────────────────────────────────────────
 function doScript(b: Record<string,string>, key: string): Response {
-  const prompt = `Write a production-ready script for this post.
-Title: ${b.title} | Format: ${b.format} | Hook: ${b.hook}
-Brief: ${b.content_brief} | Channel: ${b.channelName} | Audience: ${b.audience}
-Reel: 🎬 HOOK(0-3s) / 📢 VOICEOVER / 📋 BODY(3 beats Hinglish) / ✅ CTA
-Carousel: 📱 SLIDE 1: / 📱 SLIDE 2: etc (8 slides full copy)
-Long-form: [00:00] Intro / chapters with talking points
-AI prompt: Midjourney/DALL-E ready, aspect ratio, Indian context.
-Output JSON: {"script":"full script","ai_prompt":"AI prompt"}`
-  return streamResponse(key, SONNET, SYS_JSON, prompt, 1400)
+  const prompt = `Write a complete production-ready script for this Instagram post.
+
+Post details:
+- Title: ${b.title}
+- Format: ${b.format}
+- Hook: ${b.hook}
+- Brief: ${b.content_brief}
+- Channel: ${b.channelName}
+- Audience: ${b.audience}
+
+Script format:
+- Reel: 🎬 HOOK (0-3s) / 📢 VOICEOVER / 📋 BODY (3 beats, Hinglish where natural) / ✅ CTA
+- Carousel: 📱 SLIDE 1 — COVER: [text] / 📱 SLIDE 2: [text] / etc (8-10 slides, full copy each)
+- Long-form: [00:00] Intro / [02:00] Chapter 1 / etc with talking points
+
+AI image/video prompt: Midjourney or DALL-E ready. Include exact aspect ratio (9:16 for Reel, 4:5 for Carousel, 16:9 for Long-form), visual style, and Indian context.
+
+Reply with ONLY this JSON:
+{"script": "Write the complete full script here — do not abbreviate", "ai_prompt": "Write the complete detailed AI image/video generation prompt here"}`
+  return streamIt(key, SONNET, SYS, prompt, 1500)
 }
 
+// ── SUGGEST ───────────────────────────────────────────────────────────────────
 function doSuggest(b: Record<string,string>, key: string): Response {
-  const prompt = `Indian Instagram viral content strategist.
-Niche: ${b.niche} | Goal: ${b.objective} | Audience: ${b.audience}
-Suggest 8 specific viral topics. Output JSON:
-{"suggestions":[{"topic":"specific title","format":"Reel","hook":"Hinglish hook","reason":"why it works","score":8,"pillar":"pillar name"}]}`
-  return streamResponse(key, HAIKU, SYS_JSON, prompt, 1200)
+  const prompt = `You are a viral content strategist for Indian Instagram and YouTube.
+
+Channel niche: ${b.niche}
+Goal: ${b.objective}
+Target audience: ${b.audience}
+
+Suggest 8 highly specific, viral-ready content topics for this exact niche and audience.
+
+Reply with ONLY this JSON — fill every field with real specific content:
+{
+  "suggestions": [
+    {
+      "topic": "Write the specific post title (not generic)",
+      "format": "Reel",
+      "hook": "Write the actual Hinglish hook line for this specific topic",
+      "reason": "Write 1 sentence explaining exactly why this will get high engagement",
+      "score": 8,
+      "pillar": "Write the content pillar this belongs to"
+    }
+  ]
+}`
+  return streamIt(key, HAIKU, SYS, prompt, 1400)
 }
 
+// ── VIRAL ─────────────────────────────────────────────────────────────────────
 function doViral(b: Record<string,string>, key: string): Response {
-  const prompt = `Viral content analyst for Indian Instagram/YouTube.
-Niche: ${b.niche} | Goal: ${b.objective} | Audience: ${b.audience}${b.handle ? ` | Handle: ${b.handle}` : ''}
-Top 10 viral content patterns right now. Output JSON:
-{"viral_patterns":[{"topic":"str","format":"Reel","trigger":"FOMO","hook":"Hinglish hook","reach_potential":"Viral","platform":"Reels","example_title":"exact viral title","reason":"why it works"}],"insight":"key niche insight"}`
-  return streamResponse(key, SONNET, SYS_JSON, prompt, 2000)
+  const prompt = `You are a viral content analyst for Indian Instagram and YouTube.
+
+Channel niche: ${b.niche}
+Goal: ${b.objective}
+Audience: ${b.audience}
+${b.handle ? `Handle: ${b.handle}` : ''}
+
+Identify the top 10 content patterns that are going viral right now for this specific niche and audience in India.
+
+Reply with ONLY this JSON — fill every field with real, specific content:
+{
+  "viral_patterns": [
+    {
+      "topic": "Write the specific content topic",
+      "format": "Reel",
+      "trigger": "FOMO",
+      "hook": "Write the actual Hinglish hook line",
+      "reach_potential": "Viral",
+      "platform": "Instagram Reels",
+      "example_title": "Write an exact viral title that would work for this topic",
+      "reason": "Write 1 sentence explaining why this specific pattern is getting high reach right now"
+    }
+  ],
+  "insight": "Write 1-2 sentences about the single most important content opportunity in this niche right now."
+}`
+  return streamIt(key, SONNET, SYS, prompt, 2200)
 }
 
+// ── AUDIT ─────────────────────────────────────────────────────────────────────
 function doAudit(b: Record<string,string>, key: string): Response {
-  const prompt = `Expert Instagram growth strategist. Channel audit.
-Handle: ${b.handle || 'not shared'} | Niche: ${b.niche} | Goal: ${b.objective} | Audience: ${b.audience}
-Output JSON:
-{"profile_strategy":"str","content_mix":{"reel":40,"carousel":40,"longform":20,"reasoning":"str"},"posting_frequency":"3x/week","whats_working":["str","str","str"],"whats_missing":["str","str","str"],"top_improvements":[{"action":"str","impact":"High","reason":"str"},{"action":"str","impact":"Medium","reason":"str"},{"action":"str","impact":"High","reason":"str"}],"hook_formula":"specific formula for this audience","growth_levers":["str","str","str"],"overall_score":7,"summary":"2-3 sentence honest assessment"}`
-  return streamResponse(key, SONNET, SYS_JSON, prompt, 2000)
+  const prompt = `You are an expert Instagram growth strategist.
+
+Channel to audit:
+- Handle: ${b.handle || 'not provided'}
+- Niche: ${b.niche}
+- Goal: ${b.objective}
+- Audience: ${b.audience}
+
+Provide a detailed channel audit with real, specific, actionable insights for THIS specific niche.
+
+Reply with ONLY this JSON — every field must have real specific content, not generic advice:
+{
+  "profile_strategy": "Write 1-2 sentences about what the profile bio and highlights should communicate for this specific niche.",
+  "content_mix": {
+    "reel": 40,
+    "carousel": 40,
+    "longform": 20,
+    "reasoning": "Write 1 sentence explaining why this specific mix works for this niche and audience."
+  },
+  "posting_frequency": "Write the specific recommendation, e.g. 3x per week: Tue/Thu/Sat",
+  "whats_working": [
+    "Write one specific thing that works well in this niche",
+    "Write another specific working pattern",
+    "Write a third specific working strategy"
+  ],
+  "whats_missing": [
+    "Write one specific content gap in this niche",
+    "Write another specific missing element",
+    "Write a third specific opportunity"
+  ],
+  "top_improvements": [
+    {"action": "Write one specific actionable improvement", "impact": "High", "reason": "Write why this improvement matters"},
+    {"action": "Write a second specific improvement", "impact": "Medium", "reason": "Write why this matters"},
+    {"action": "Write a third specific improvement", "impact": "High", "reason": "Write why this matters"}
+  ],
+  "hook_formula": "Write the exact hook formula for this audience: e.g. Start with [belief] → expose [cost] → reveal [truth]",
+  "growth_levers": [
+    "Write one specific growth lever for this niche",
+    "Write a second specific growth lever",
+    "Write a third specific growth lever"
+  ],
+  "overall_score": 6,
+  "summary": "Write 2-3 honest sentences assessing this channel's current strategy and biggest opportunity."
+}`
+  return streamIt(key, SONNET, SYS, prompt, 2200)
 }
 
-// ── Main ──────────────────────────────────────────────────────────────────────
-
+// ── MAIN ──────────────────────────────────────────────────────────────────────
 export async function POST(req: NextRequest) {
   const body = await req.json() as Record<string, unknown>
   const key  = (body.apiKey as string) || process.env.ANTHROPIC_API_KEY
@@ -177,10 +295,8 @@ export async function POST(req: NextRequest) {
     JSON.stringify({ error: 'No API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' }),
     { status: 400, headers: { 'Content-Type': 'application/json' } }
   )
-
   const action = (body.action as string) || 'generate'
   const b = body as Record<string, string>
-
   if (action === 'post_script') return doScript(b, key)
   if (action === 'suggest')     return doSuggest(b, key)
   if (action === 'viral')       return doViral(b, key)
