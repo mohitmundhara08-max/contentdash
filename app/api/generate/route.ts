@@ -232,8 +232,8 @@ Return ONLY this JSON (no markdown):
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model: 'claude-opus-4-5',
-        max_tokens: 8000,
+        model: quickMode ? 'claude-haiku-4-5' : 'claude-opus-4-5',
+max_tokens: quickMode ? 3000 : 8000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
@@ -253,7 +253,16 @@ Return ONLY this JSON (no markdown):
       .replace(/\s*```\s*$/i, '')
       .trim()
 
-    const plan = JSON.parse(clean)
+    let plan
+try {
+  plan = JSON.parse(clean)
+} catch {
+  return NextResponse.json(
+    { error: 'Claude returned malformed JSON — try again or switch to Quick Mode.' },
+    { status: 500 },
+  )
+}
+return NextResponse.json(plan)
     return NextResponse.json(plan)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
