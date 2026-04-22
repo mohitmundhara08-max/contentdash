@@ -5,7 +5,7 @@ export const maxDuration = 60
 export const dynamic = 'force-dynamic'
 
 const SONNET = 'claude-sonnet-4-6'
-const HAIKU  = 'claude-haiku-4-5-20251001'
+const HAIKU = 'claude-haiku-4-5-20251001'
 
 function buildDates(n: number): string[] {
   const dates: string[] = []
