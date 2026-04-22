@@ -137,7 +137,7 @@ Return ONLY this JSON (no markdown):
     }
 
     const data = await response.json()
-    const text = (data.content?.?.text || '').trim()
+const text = (data.content?.[0]?.text || '').trim()
 
     // More robust fence stripping, but same behaviour
     const clean = text
