@@ -54,7 +54,7 @@ Goal: ${objective}
 Audience: ${audience}
 ${handle ? `Handle: ${handle}` : ''}
 
-Identify the top 6 content patterns that are going viral right now for this specific niche and audience in India.
+Identify the top 10 content patterns that are going viral right now for this specific niche and audience in India.
 
 Return ONLY this JSON (no markdown):
 {
