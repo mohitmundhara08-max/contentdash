@@ -520,18 +520,18 @@ function AuditView({audit,loading,error,onRun}:{audit:AuditResult|null;loading:b
         <div className="card">
           <div style={{fontSize:13,fontWeight:600,marginBottom:11}}>Recommended Content Mix</div>
           <div style={{display:'grid',gridTemplateColumns:'repeat(3,1fr)',gap:10,marginBottom:9}}>
-            {[['🎬 Reels',audit.content_mix.reel],['🖼️ Carousels',audit.content_mix.carousel],['📹 Long-form',audit.content_mix.longform]].map(([l,v])=>(
+            {[['🎬 Reels',audit.content_mix?.reel??40],['🖼️ Carousels',audit.content_mix?.carousel??40],['📹 Long-form',audit.content_mix?.longform??20]].map(([l,v])=>(
               <div key={l as string} style={{background:'var(--bg-elevated)',borderRadius:8,padding:9,textAlign:'center'}}><div style={{fontSize:18,fontWeight:700,color:'var(--accent)'}}>{v}%</div><div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{l as string}</div></div>
             ))}
           </div>
-          <div style={{fontSize:12,color:'var(--text-muted)',lineHeight:1.5}}>{audit.content_mix.reasoning}</div>
+          <div style={{fontSize:12,color:'var(--text-muted)',lineHeight:1.5}}>{audit.content_mix?.reasoning||''}</div>
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
-          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11,color:'#34d399'}}>✅ Working</div>{audit.whats_working.map((item,i)=><div key={i} style={{display:'flex',gap:7,padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--text-secondary)'}}><span style={{color:'#34d399',flexShrink:0}}>→</span>{item}</div>)}</div>
-          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11,color:'#f87171'}}>❌ Missing</div>{audit.whats_missing.map((item,i)=><div key={i} style={{display:'flex',gap:7,padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--text-secondary)'}}><span style={{color:'#f87171',flexShrink:0}}>→</span>{item}</div>)}</div>
+          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11,color:'#34d399'}}>✅ Working</div>{(audit.whats_working||[]).map((item,i)=><div key={i} style={{display:'flex',gap:7,padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--text-secondary)'}}><span style={{color:'#34d399',flexShrink:0}}>→</span>{item}</div>)}</div>
+          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11,color:'#f87171'}}>❌ Missing</div>{(audit.whats_missing||[]).map((item,i)=><div key={i} style={{display:'flex',gap:7,padding:'5px 0',borderBottom:'1px solid var(--border)',fontSize:12,color:'var(--text-secondary)'}}><span style={{color:'#f87171',flexShrink:0}}>→</span>{item}</div>)}</div>
         </div>
         <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11}}>🚀 Top Improvements</div>
-          {audit.top_improvements.map((item,i)=>(
+          {(audit.top_improvements||[]).map((item,i)=>(
             <div key={i} style={{display:'flex',gap:11,padding:'8px 0',borderBottom:'1px solid var(--border)',alignItems:'flex-start'}}>
               <div style={{width:21,height:21,borderRadius:'50%',background:'rgba(233,69,96,0.15)',color:'var(--accent)',fontSize:11,fontWeight:700,display:'flex',alignItems:'center',justifyContent:'center',flexShrink:0,marginTop:2}}>{i+1}</div>
               <div style={{flex:1}}><div style={{fontSize:13,fontWeight:500,marginBottom:2}}>{item.action}</div><div style={{fontSize:12,color:'var(--text-muted)'}}>{item.reason}</div></div>
@@ -541,7 +541,7 @@ function AuditView({audit,loading,error,onRun}:{audit:AuditResult|null;loading:b
         </div>
         <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:15}}>
           <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:9}}>🎯 Hook Formula</div><div style={{fontSize:12,color:'var(--text-secondary)',lineHeight:1.7,background:'rgba(233,69,96,0.06)',padding:'9px 12px',borderRadius:8,borderLeft:'3px solid var(--accent)',fontStyle:'italic'}}>"{audit.hook_formula}"</div><div style={{fontSize:13,fontWeight:600,marginBottom:5,marginTop:13}}>📅 Cadence</div><div style={{fontSize:12,color:'var(--text-secondary)'}}>{audit.posting_frequency}</div></div>
-          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11}}>📈 Growth Levers</div>{audit.growth_levers.map((l,i)=><div key={i} style={{display:'flex',gap:9,padding:'6px 0',borderBottom:i<audit.growth_levers.length-1?'1px solid var(--border)':'none',fontSize:12,color:'var(--text-secondary)',alignItems:'flex-start'}}><span style={{color:'var(--accent)',fontWeight:700,flexShrink:0}}>{i+1}.</span>{l}</div>)}</div>
+          <div className="card"><div style={{fontSize:13,fontWeight:600,marginBottom:11}}>📈 Growth Levers</div>{(audit.growth_levers||[]).map((l,i)=><div key={i} style={{display:'flex',gap:9,padding:'6px 0',borderBottom:i<audit.growth_levers.length-1?'1px solid var(--border)':'none',fontSize:12,color:'var(--text-secondary)',alignItems:'flex-start'}}><span style={{color:'var(--accent)',fontWeight:700,flexShrink:0}}>{i+1}.</span>{l}</div>)}</div>
         </div>
       </div>}
       {!loading&&!audit&&<div style={{textAlign:'center',padding:'80px 20px',color:'var(--text-muted)'}}><div style={{fontSize:52,marginBottom:14}}>📋</div><div style={{fontSize:15,color:'var(--text-secondary)',marginBottom:20}}>Get a full AI strategy audit with gaps, scores, and growth levers</div><button className="btn-primary" onClick={onRun} style={{padding:'10px 24px'}}>📋 Run Channel Audit</button></div>}
