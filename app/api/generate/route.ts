@@ -3,38 +3,69 @@ import { NextRequest, NextResponse } from 'next/server'
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { channelName, objective, audience, keyword, duration, quickMode, apiKey } = body
+    const {
+      channelName,
+      objective,
+      audience,
+      keyword,
+      duration,
+      quickMode,
+      apiKey,
+    } = body
 
     const key = apiKey || process.env.ANTHROPIC_API_KEY
     if (!key) {
       return NextResponse.json(
-        { error: 'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' },
-        { status: 400 }
+        {
+          error:
+            'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.',
+        },
+        { status: 400 },
       )
     }
 
-    const today      = new Date()
-    const startDate  = new Date(today)
+    const today = new Date()
+    const startDate = new Date(today)
     startDate.setDate(today.getDate() + 1)
-    const postsCount = Math.ceil(duration / 7) * 3
 
-    const systemPrompt = `You are a world-class social media content strategist specialising in Indian education and career content for Instagram and YouTube. You always return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.`
+    const days = Number(duration) || 30
+    const postsCount = Math.ceil(days / 7) * 3
+
+    const systemPrompt =
+      'You are a world-class social media content strategist specialising in Indian education and career content for Instagram and YouTube. You always return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.'
 
     const userPrompt = quickMode
-      ? `Generate a quick ${duration}-day Instagram content plan.
+      ? `Generate a quick ${days}-day Instagram content plan.
 Channel: ${channelName}
 Objective: ${objective}
 Audience: ${audience}
 Topic: ${keyword}
 Posts: ${postsCount} total. Rotate: Reels on Tue, Carousels on Thu, Long-form on Sat. Start: ${startDate.toDateString()}.
 
+Keep outputs short but include realistic metric targets.
+
 Return ONLY this JSON (no markdown):
 {
   "posts": [
-    { "day":1,"week":1,"format":"Reel","pillar":"string","title":"string","hook":"string","hashtags":"#tag1 #tag2 #tag3","post_date":"Tue, 22 Apr 2026" }
+    {
+      "day": 1,
+      "week": 1,
+      "format": "Reel",
+      "pillar": "pillar name",
+      "title": "post title",
+      "hook": "opening hook line",
+      "hashtags": "#tag1 #tag2 #tag3",
+      "post_date": "Tue, 22 Apr 2026",
+      "reach_target": 5000,
+      "saves_target": 200,
+      "shares_target": 100,
+      "comments_target": 80,
+      "plays_target": 8000,
+      "priority": 4
+    }
   ]
 }`
-      : `Generate a full ${duration}-day Instagram content plan.
+      : `Generate a full ${days}-day Instagram content plan.
 Channel: ${channelName}
 Objective: ${objective}
 Target Audience: ${audience}
@@ -85,27 +116,37 @@ Return ONLY this JSON (no markdown):
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
-        'Content-Type':    'application/json',
-        'x-api-key':       key,
+        'Content-Type': 'application/json',
+        'x-api-key': key,
         'anthropic-version': '2023-06-01',
       },
       body: JSON.stringify({
-        model:      'claude-opus-4-5',
+        model: 'claude-opus-4-5',
         max_tokens: 8000,
-        system:     systemPrompt,
-        messages:   [{ role: 'user', content: userPrompt }],
+        system: systemPrompt,
+        messages: [{ role: 'user', content: userPrompt }],
       }),
     })
 
     if (!response.ok) {
       const err = await response.text()
-      return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
+      return NextResponse.json(
+        { error: `Claude API error: ${err}` },
+        { status: 500 },
+      )
     }
 
-    const data  = await response.json()
-    const text  = data.content[0].text.trim()
-    const clean = text.replace(/```json\n?/g, '').replace(/```\n?/g, '').trim()
-    const plan  = JSON.parse(clean)
+    const data = await response.json()
+    const text = (data.content?.?.text || '').trim()
+
+    // More robust fence stripping, but same behaviour
+    const clean = text
+      .replace(/^```json\s*/i, '')
+      .replace(/^```\s*/i, '')
+      .replace(/\s*```\s*$/i, '')
+      .trim()
+
+    const plan = JSON.parse(clean)
 
     return NextResponse.json(plan)
   } catch (err: unknown) {
