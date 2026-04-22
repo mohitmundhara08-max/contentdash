@@ -224,12 +224,25 @@ function PostCard({post,pillars,selected,onClick}:{post:Post;pillars:string[];se
 }
 
 // ─── CalendarView ───────────────────────────────────────────────────────────
-function CalendarView({posts,pillars}:{posts:Post[];pillars:string[]}){
+function CalendarView({posts,pillars,apiKey,channel}:{posts:Post[];pillars:string[];apiKey:string;channel:Channel}){
   const [sel,setSel]=useState<Post|null>(null)
   const [filter,setFilter]=useState('All')
   const [dtab,setDtab]=useState<'brief'|'script'|'prompt'>('brief')
   const [cp,setCp]=useState('')
+  // Scripts stored locally — loaded on demand per post (keeps generation fast)
+  const [loadedScripts,setLoadedScripts]=useState<Record<string,{script:string;ai_prompt:string}>>({})
+  const [loadingScript,setLoadingScript]=useState(false)
+  const [scriptErr,setScriptErr]=useState('')
   function copy(t:string,id:string){navigator.clipboard.writeText(t);setCp(id);setTimeout(()=>setCp(''),2000)}
+  async function loadScript(post:Post){
+    if(!apiKey){setScriptErr('Add your API key in ⚙️ Settings first');return}
+    setLoadingScript(true);setScriptErr('')
+    try{
+      const data=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'post_script',postId:post.id,title:post.title,format:post.format,hook:post.hook,content_brief:post.content_brief,pillar:post.pillar,channelName:channel.name,audience:channel.audience,apiKey})})
+      setLoadedScripts(p=>({...p,[post.id]:data}))
+    }catch(e:unknown){setScriptErr(e instanceof Error?e.message:'Failed to load script')}
+    finally{setLoadingScript(false)}
+  }
   const fil=filter==='All'?posts:posts.filter(p=>p.format===filter)
   const wks:Record<number,Post[]>={}
   fil.forEach(p=>{if(!wks[p.week])wks[p.week]=[];wks[p.week].push(p)})
@@ -288,8 +301,30 @@ function CalendarView({posts,pillars}:{posts:Post[];pillars:string[]}){
                   ))}
                 </div>
               </div>}
-              {dtab==='script'&&(sel.script?<><div style={{display:'flex',justifyContent:'flex-end',marginBottom:9}}><button onClick={()=>copy(sel.script,'sc')} className="btn-ghost" style={{fontSize:11,padding:'5px 12px'}}>{cp==='sc'?'✓ Copied':'Copy script'}</button></div><div style={{fontSize:12,color:'var(--text-secondary)',lineHeight:1.8,background:'var(--bg-elevated)',borderRadius:10,padding:12,whiteSpace:'pre-wrap',fontFamily:'monospace'}}>{sel.script}</div></>:<div style={{textAlign:'center',padding:'40px 20px',color:'var(--text-muted)'}}><div style={{fontSize:32,marginBottom:8}}>📝</div><div style={{fontSize:13}}>No script — use Full mode when generating</div></div>)}
-              {dtab==='prompt'&&(sel.ai_prompt?<><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9}}><div style={{fontSize:12,color:'var(--text-muted)'}}>Paste into Midjourney / DALL-E / Firefly</div><button onClick={()=>copy(sel.ai_prompt,'pr')} className="btn-ghost" style={{fontSize:11,padding:'5px 12px'}}>{cp==='pr'?'✓ Copied':'Copy'}</button></div><div style={{fontSize:12,color:'#fbbf24',lineHeight:1.7,background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:12}}>{sel.ai_prompt}</div></>:<div style={{textAlign:'center',padding:'40px 20px',color:'var(--text-muted)'}}><div style={{fontSize:32,marginBottom:8}}>🤖</div><div style={{fontSize:13}}>No AI prompt — use Full mode when generating</div></div>)}
+              {dtab==='script'&&(()=>{
+                const sc=loadedScripts[sel.id]?.script||sel.script
+                return sc?<><div style={{display:'flex',justifyContent:'flex-end',marginBottom:9}}><button onClick={()=>copy(sc,'sc')} className="btn-ghost" style={{fontSize:11,padding:'5px 12px'}}>{cp==='sc'?'✓ Copied':'Copy script'}</button></div><div style={{fontSize:12,color:'var(--text-secondary)',lineHeight:1.8,background:'var(--bg-elevated)',borderRadius:10,padding:12,whiteSpace:'pre-wrap',fontFamily:'monospace'}}>{sc}</div></>
+                :<div style={{textAlign:'center',padding:'30px 20px',color:'var(--text-muted)'}}>
+                  <div style={{fontSize:32,marginBottom:10}}>📝</div>
+                  <div style={{fontSize:13,marginBottom:16,color:'var(--text-secondary)'}}>Script loads on demand — click below to generate</div>
+                  {scriptErr&&<div style={{color:'#f87171',fontSize:12,marginBottom:12,padding:'8px 12px',background:'rgba(248,113,113,0.1)',borderRadius:8}}>⚠️ {scriptErr}</div>}
+                  <button onClick={()=>loadScript(sel)} disabled={loadingScript} className="btn-primary" style={{padding:'9px 20px',fontSize:13}}>
+                    {loadingScript?'⚙️ Generating script…':'🎬 Generate Script'}
+                  </button>
+                  {loadingScript&&<div style={{fontSize:11,color:'var(--text-muted)',marginTop:10}}>~5 seconds…</div>}
+                </div>
+              })()}
+              {dtab==='prompt'&&(()=>{
+                const pr=loadedScripts[sel.id]?.ai_prompt||sel.ai_prompt
+                return pr?<><div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:9}}><div style={{fontSize:12,color:'var(--text-muted)'}}>Paste into Midjourney / DALL-E / Firefly</div><button onClick={()=>copy(pr,'pr')} className="btn-ghost" style={{fontSize:11,padding:'5px 12px'}}>{cp==='pr'?'✓ Copied':'Copy'}</button></div><div style={{fontSize:12,color:'#fbbf24',lineHeight:1.7,background:'rgba(245,158,11,0.08)',border:'1px solid rgba(245,158,11,0.2)',borderRadius:10,padding:12}}>{pr}</div></>
+                :<div style={{textAlign:'center',padding:'30px 20px',color:'var(--text-muted)'}}>
+                  <div style={{fontSize:32,marginBottom:10}}>🤖</div>
+                  <div style={{fontSize:13,marginBottom:16,color:'var(--text-secondary)'}}>AI prompt loads on demand — generate the script first</div>
+                  <button onClick={()=>loadScript(sel)} disabled={loadingScript} className="btn-primary" style={{padding:'9px 20px',fontSize:13}}>
+                    {loadingScript?'⚙️ Generating…':'🤖 Generate AI Prompt'}
+                  </button>
+                </div>
+              })()}
             </div>
           </div>
         </div>
@@ -633,7 +668,7 @@ export default function Dashboard(){
         </div>
         :postsLoading?<div style={{display:'grid',gridTemplateColumns:'repeat(auto-fill,minmax(188px,1fr))',gap:10}}>{[...Array(9)].map((_,i)=><Sh key={i} h={130}/>)}</div>
         :<>
-          {tab==='calendar'&&<CalendarView posts={posts} pillars={pillars}/>}
+          {tab==='calendar'&&active&&<CalendarView posts={posts} pillars={pillars} apiKey={apiKey} channel={active}/>}
           {tab==='tracker'&&<TrackerView posts={posts}/>}
           {tab==='pillars'&&<PillarView posts={posts} pillars={pillars}/>}
           {tab==='strategy'&&<StrategyView posts={posts} meta={meta}/>}
