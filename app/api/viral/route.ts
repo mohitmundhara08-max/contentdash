@@ -97,7 +97,7 @@ Return ONLY this JSON (no markdown):
     }
 
     const data = await response.json()
-    const text = (data.content?.?.text || '').trim()
+    const text = (data.content?.[0]?.text || '').trim()
     const json = parseClaudeJSON(text)
 
     return NextResponse.json(json)
