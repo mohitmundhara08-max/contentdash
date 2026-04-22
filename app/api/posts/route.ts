@@ -72,3 +72,40 @@ export async function POST(req: NextRequest) {
     )
   }
 }
+// existing POST stays exactly as-is above…
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const channelId = searchParams.get('channelId')
+
+    if (!channelId) {
+      return NextResponse.json(
+        { error: 'channelId required' },
+        { status: 400 },
+      )
+    }
+
+    const { data, error } = await supabase
+      .from('ig_posts')
+      .select('*')
+      .eq('channel_id', channelId)
+      .order('week', { ascending: true })
+      .order('day', { ascending: true })
+
+    if (error) {
+      return NextResponse.json(
+        { error: error.message },
+        { status: 500 },
+      )
+    }
+
+    // Dashboard expects an array of Post objects
+    return NextResponse.json(data ?? [])
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Something went wrong' },
+      { status: 500 },
+    )
+  }
+}
