@@ -2,6 +2,28 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 
 // ─── Types ─────────────────────────────────────────────────────────────────
+interface IGSearchUser {
+  username: string
+  full_name: string
+  profile_pic_url: string
+  follower_count: number
+  is_verified: boolean
+  biography?: string
+  category?: string
+}
+
+interface Channel {
+  id: string
+  name: string
+  handle: string
+  objective: string
+  audience: string
+  niche: string
+  color: string
+  ig_account?: IGAccount
+  profile_picture_url?: string
+  followers_count?: number
+}
 interface IGAccount { id:string; username:string; name:string; profile_picture_url:string; followers_count:number }
 interface Channel { id:string; name:string; handle:string; objective:string; audience:string; niche:string; color:string; ig_account?:IGAccount }
 interface Post { id:string; plan_id:string; channel_id:string; day:number; week:number; format:string; pillar:string; title:string; hook:string; content_brief:string; script:string; ai_prompt:string; hashtags:string; cta:string; post_date:string; reach_target:number; saves_target:number; shares_target:number; comments_target:number; plays_target:number; priority:number; notes:string }
@@ -176,33 +198,213 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
 
 
 // ─── AddChannelModal ────────────────────────────────────────────────────────
-function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)=>void}){
+function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)=>void}) {
   const [f,setF]=useState({name:'',handle:'',objective:'',audience:'',niche:'',color:COLORS[0]})
-  const [loading,setLoading]=useState(false);const [err,setErr]=useState('')
+  const [loading,setLoading]=useState(false)
+  const [err,setErr]=useState('')
+  const [q,setQ]=useState('')
+  const [searching,setSearching]=useState(false)
+  const [results,setResults]=useState<IGSearchUser[]>([])
+  const [showResults,setShowResults]=useState(false)
+  const [selected,setSelected]=useState<IGSearchUser|null>(null)
+
   const s=(k:keyof typeof f,v:string)=>setF(p=>({...p,[k]:v}))
-  async function save(){
-    if(!f.name||!f.objective||!f.audience)return setErr('Name, objective and audience required')
-    setLoading(true);setErr('')
-    try{const d=await af('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});onAdded(d)}
-    catch(e:unknown){setErr(e instanceof Error?e.message:'Failed');setLoading(false)}
+
+  useEffect(()=>{
+    const term=q.trim()
+    if(term.length<2){
+      setResults([])
+      setShowResults(false)
+      return
+    }
+    const t=setTimeout(async()=>{
+      setSearching(true)
+      try{
+        const d=await af(`/api/instagram/search?q=${encodeURIComponent(term)}`)
+        setResults(d.users||[])
+        setShowResults(true)
+      }catch{
+        setResults([])
+      }finally{
+        setSearching(false)
+      }
+    },300)
+    return()=>clearTimeout(t)
+  },[q])
+
+  function pickUser(u:IGSearchUser){
+    setSelected(u)
+    setQ(u.full_name || u.username)
+    s('name',u.full_name || u.username)
+    s('handle',`@${u.username}`)
+    if(!f.niche && u.category) s('niche',u.category)
+    setShowResults(false)
   }
+
+  async function save(){
+    if(!f.name||!f.objective||!f.audience) return setErr('Name, objective and audience required')
+    setLoading(true);setErr('')
+    try{
+      const payload = {
+        ...f,
+        profile_picture_url: selected?.profile_pic_url || '',
+        followers_count: selected?.follower_count || 0,
+      }
+      const d=await af('/api/channels',{
+        method:'POST',
+        headers:{'Content-Type':'application/json'},
+        body:JSON.stringify(payload)
+      })
+      onAdded({
+        ...d,
+        profile_picture_url: payload.profile_picture_url,
+        followers_count: payload.followers_count,
+      })
+    }catch(e:unknown){
+      setErr(e instanceof Error?e.message:'Failed')
+      setLoading(false)
+    }
+  }
+
   return(
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{maxWidth:500}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}><div style={{fontSize:18,fontWeight:600}}>Add Channel</div><button className="btn-ghost" onClick={onClose} style={{padding:'6px 10px'}}>✕</button></div>
+      <div className="modal" style={{maxWidth:520}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}>
+          <div style={{fontSize:18,fontWeight:600}}>Add Channel</div>
+          <button className="btn-ghost" onClick={onClose} style={{padding:'6px 10px'}}>✕</button>
+        </div>
+
         <div style={{display:'grid',gap:14}}>
-          {([['Channel Name *','name','e.g. Testbook AP Channel'],['Instagram Handle','handle','@testbook_ap'],['Niche / Category','niche','e.g. EdTech, Career, Fitness'],['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],['Audience *','audience','e.g. UGC NET qualifiers']] as const).map(([l,k,ph])=>(
-            <div key={k}><div className="section-label">{l}</div><input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)}/></div>
+          <div style={{position:'relative'}}>
+            <div className="section-label">Instagram search *</div>
+            <input
+              className="input"
+              placeholder="Search Instagram account..."
+              value={q}
+              onChange={e=>{setQ(e.target.value); setSelected(null); if(!f.name) s('handle','')}}
+            />
+            {searching && <div style={{fontSize:11,color:'var(--text-muted)',marginTop:6}}>Searching…</div>}
+
+            {showResults && results.length>0 && (
+              <div style={{
+                position:'absolute',
+                top:'calc(100% + 6px)',
+                left:0,
+                right:0,
+                background:'var(--bg-card)',
+                border:'1px solid var(--border-hover)',
+                borderRadius:12,
+                padding:6,
+                zIndex:50,
+                boxShadow:'0 12px 32px rgba(0,0,0,0.35)'
+              }}>
+                {results.map(u=>(
+                  <button
+                    key={u.username}
+                    onClick={()=>pickUser(u)}
+                    style={{
+                      width:'100%',
+                      display:'flex',
+                      gap:10,
+                      alignItems:'center',
+                      padding:'8px 10px',
+                      background:'transparent',
+                      border:'none',
+                      borderRadius:8,
+                      cursor:'pointer',
+                      textAlign:'left'
+                    }}
+                  >
+                    <img
+                      src={u.profile_pic_url}
+                      alt={u.username}
+                      width={36}
+                      height={36}
+                      style={{width:36,height:36,borderRadius:'50%',objectFit:'cover',flexShrink:0}}
+                    />
+                    <div style={{flex:1,minWidth:0}}>
+                      <div style={{fontSize:13,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+                        <span style={{overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{u.full_name || u.username}</span>
+                        {u.is_verified && <span style={{color:'#3b82f6',fontSize:11}}>✓</span>}
+                      </div>
+                      <div style={{fontSize:11,color:'var(--text-muted)'}}>
+                        @{u.username} · {(u.follower_count||0).toLocaleString()} followers
+                      </div>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {selected && (
+            <div style={{
+              display:'flex',
+              gap:10,
+              alignItems:'center',
+              padding:'10px 12px',
+              border:'1px solid var(--border)',
+              background:'var(--bg-elevated)',
+              borderRadius:10
+            }}>
+              <img
+                src={selected.profile_pic_url}
+                alt={selected.username}
+                width={40}
+                height={40}
+                style={{width:40,height:40,borderRadius:'50%',objectFit:'cover'}}
+              />
+              <div>
+                <div style={{fontSize:13,fontWeight:600}}>{selected.full_name || selected.username}</div>
+                <div style={{fontSize:11,color:'var(--text-muted)'}}>
+                  @{selected.username} · {(selected.follower_count||0).toLocaleString()} followers
+                </div>
+              </div>
+            </div>
+          )}
+
+          {([
+            ['Channel Name *','name','e.g. Testbook AP Channel'],
+            ['Instagram Handle','handle','@testbook_ap'],
+            ['Niche / Category','niche','e.g. EdTech, Career, Fitness'],
+            ['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],
+            ['Audience *','audience','e.g. UGC NET qualifiers']
+          ] as const).map(([l,k,ph])=>(
+            <div key={k}>
+              <div className="section-label">{l}</div>
+              <input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)} />
+            </div>
           ))}
-          <div><div className="section-label">Colour</div><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>{COLORS.map(c=><div key={c} onClick={()=>s('color',c)} style={{width:26,height:26,borderRadius:'50%',background:c,cursor:'pointer',border:f.color===c?'3px solid white':'3px solid transparent'}}/>)}</div></div>
+
+          <div>
+            <div className="section-label">Colour</div>
+            <div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>
+              {COLORS.map(c=>(
+                <div
+                  key={c}
+                  onClick={()=>s('color',c)}
+                  style={{
+                    width:26,height:26,borderRadius:'50%',background:c,cursor:'pointer',
+                    border:f.color===c?'3px solid white':'3px solid transparent'
+                  }}
+                />
+              ))}
+            </div>
+          </div>
+
           {err&&<div style={{color:'#f87171',fontSize:12}}>{err}</div>}
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={save} disabled={loading}>{loading?'Saving…':'Add Channel'}</button></div>
+
+          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+            <button className="btn-ghost" onClick={onClose}>Cancel</button>
+            <button className="btn-primary" onClick={save} disabled={loading}>
+              {loading?'Saving…':'Add Channel'}
+            </button>
+          </div>
         </div>
       </div>
     </div>
   )
 }
-
 // ─── SettingsModal ──────────────────────────────────────────────────────────
 function SettingsModal({apiKey,onSave,onClose}:{apiKey:string;onSave:(k:string)=>void;onClose:()=>void}){
   const [k,setK]=useState(apiKey);const [saved,setSaved]=useState(false)
@@ -659,17 +861,33 @@ export default function Dashboard(){
       </nav>
 
       {active&&<div style={{background:'var(--bg-surface)',borderBottom:'1px solid var(--border)',padding:'5px 18px',display:'flex',alignItems:'center',gap:10}}>
-        <div style={{width:8,height:8,borderRadius:'50%',background:active.color,flexShrink:0}}/>
-        <div style={{fontSize:12,color:'var(--text-secondary)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
-          <span style={{color:'var(--text-primary)',fontWeight:500}}>{active.name}</span>
-          {active.handle&&<span>{active.handle}</span>}
-          {active.niche&&<><span style={{color:'var(--text-muted)'}}>·</span><span>{active.niche}</span></>}
-          <span style={{color:'var(--text-muted)'}}>·</span><span>{posts.length} posts</span>
-          {active.ig_account&&<span style={{color:'#34d399',fontSize:11}}>● Instagram live</span>}
-          {viralL&&tab!=='viral'&&<span style={{fontSize:11,color:'#f59e0b'}}>🔥 Viral loading…</span>}
-          {auditL&&tab!=='audit'&&<span style={{fontSize:11,color:'#f59e0b'}}>📋 Audit loading…</span>}
-        </div>
-      </div>}
+  {active.profile_picture_url ? (
+    <img
+      src={active.profile_picture_url}
+      alt={active.name}
+      width={24}
+      height={24}
+      style={{width:24,height:24,borderRadius:'50%',objectFit:'cover',flexShrink:0}}
+    />
+  ) : (
+    <div style={{width:8,height:8,borderRadius:'50%',background:active.color,flexShrink:0}}/>
+  )}
+  <div style={{fontSize:12,color:'var(--text-secondary)',display:'flex',gap:8,alignItems:'center',flexWrap:'wrap'}}>
+    <span style={{color:'var(--text-primary)',fontWeight:500}}>{active.name}</span>
+    {active.handle&&<span>{active.handle}</span>}
+    {typeof active.followers_count==='number' && active.followers_count>0 && (
+      <>
+        <span style={{color:'var(--text-muted)'}}>·</span>
+        <span>{active.followers_count.toLocaleString()} followers</span>
+      </>
+    )}
+    {active.niche&&<><span style={{color:'var(--text-muted)'}}>·</span><span>{active.niche}</span></>}
+    <span style={{color:'var(--text-muted)'}}>·</span><span>{posts.length} posts</span>
+    {active.ig_account&&<span style={{color:'#34d399',fontSize:11}}>● Instagram live</span>}
+    {viralL&&tab!=='viral'&&<span style={{fontSize:11,color:'#f59e0b'}}>🔥 Viral loading…</span>}
+    {auditL&&tab!=='audit'&&<span style={{fontSize:11,color:'#f59e0b'}}>📋 Audit loading…</span>}
+  </div>
+</div>}
 
       <main style={{flex:1,padding:'20px',maxWidth:1440,width:'100%',margin:'0 auto'}}>
         {loading?<div style={{display:'grid',gap:12}}>{[140,110,110].map((h,i)=><Sh key={i} h={h}/>)}</div>
