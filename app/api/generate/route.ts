@@ -95,7 +95,7 @@ function doGenerate(b: Record<string,unknown>, key: string): Response {
   const n    = Math.max(Math.floor(dur / 7) * 3, 3)
   const dates = buildDates(n)
 
-  if (qm) {
+    if (qm) {
     // QUICK: Haiku, minimal fields only, ~3 seconds
     const prompt = `Create a ${dur}-day Instagram content plan with ${n} posts.
 Channel: ${name} | Goal: ${obj} | Audience: ${aud}
@@ -124,17 +124,18 @@ Reply with ONLY this JSON, filling every field with real specific content:
 }`
     const maxOut = Math.min(n * 200 + 600, 3800)
     return streamIt(
-  key,
-  HAIKU,
-  SYS,
-  prompt,
-  maxOut,
-  d => {
-    if (!Array.isArray((d as { posts?: unknown[] }).posts)) {
-      throw new Error('No posts returned — try again')
-    }
-  },
-)
+      key,
+      HAIKU,
+      SYS,
+      prompt,
+      maxOut,
+      d => {
+        if (!Array.isArray((d as { posts?: unknown[] }).posts)) {
+          throw new Error('No posts returned — try again')
+        }
+      },
+    )
+  } // ← this closing brace is the important part
 
   // FULL: Sonnet, all fields, scripts loaded on-demand per post
   const prompt = `Create a ${dur}-day Instagram content calendar with ${n} posts.
