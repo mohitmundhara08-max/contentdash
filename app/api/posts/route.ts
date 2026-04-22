@@ -1,5 +1,34 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabase } from '@/lib/supabase' // or your actual import
+import { supabase } from '@/lib/supabase'
+
+export async function GET(req: NextRequest) {
+  try {
+    const { searchParams } = new URL(req.url)
+    const channelId = searchParams.get('channelId')
+
+    if (!channelId) {
+      return NextResponse.json({ error: 'channelId required' }, { status: 400 })
+    }
+
+    const { data, error } = await supabase
+      .from('ig_posts')
+      .select('*')
+      .eq('channel_id', channelId)
+      .order('week', { ascending: true })
+      .order('day', { ascending: true })
+
+    if (error) {
+      return NextResponse.json({ error: error.message }, { status: 500 })
+    }
+
+    return NextResponse.json(data ?? [])
+  } catch (err) {
+    return NextResponse.json(
+      { error: err instanceof Error ? err.message : 'Something went wrong' },
+      { status: 500 },
+    )
+  }
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -13,10 +42,7 @@ export async function POST(req: NextRequest) {
       .eq('channel_id', channelId)
 
     if (postsDeleteError) {
-      return NextResponse.json(
-        { error: postsDeleteError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: postsDeleteError.message }, { status: 500 })
     }
 
     const { error: plansDeleteError } = await supabase
@@ -25,10 +51,7 @@ export async function POST(req: NextRequest) {
       .eq('channel_id', channelId)
 
     if (plansDeleteError) {
-      return NextResponse.json(
-        { error: plansDeleteError.message },
-        { status: 500 }
-      )
+      return NextResponse.json({ error: plansDeleteError.message }, { status: 500 })
     }
 
     // 1) insert new content plan
@@ -68,40 +91,32 @@ export async function POST(req: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : 'Something went wrong' },
-      { status: 500 }
+      { status: 500 },
     )
   }
 }
-// existing POST stays exactly as-is above…
 
-export async function GET(req: NextRequest) {
+export async function PATCH(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const channelId = searchParams.get('channelId')
+    const body = await req.json()
+    const { postId, content_brief, script, ai_prompt, cta, notes } = body
 
-    if (!channelId) {
-      return NextResponse.json(
-        { error: 'channelId required' },
-        { status: 400 },
-      )
+    if (!postId) {
+      return NextResponse.json({ error: 'postId required' }, { status: 400 })
     }
 
     const { data, error } = await supabase
       .from('ig_posts')
-      .select('*')
-      .eq('channel_id', channelId)
-      .order('week', { ascending: true })
-      .order('day', { ascending: true })
+      .update({ content_brief, script, ai_prompt, cta, notes })
+      .eq('id', postId)
+      .select()
+      .single()
 
     if (error) {
-      return NextResponse.json(
-        { error: error.message },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: error.message }, { status: 500 })
     }
 
-    // Dashboard expects an array of Post objects
-    return NextResponse.json(data ?? [])
+    return NextResponse.json(data)
   } catch (err) {
     return NextResponse.json(
       { error: err instanceof Error ? err.message : 'Something went wrong' },

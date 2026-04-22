@@ -12,20 +12,23 @@ export async function POST(req: NextRequest) {
       duration,
       quickMode,
       apiKey,
+      // enrich fields
+      postId,
+      title,
+      hook,
+      format,
+      pillar,
     } = body
 
     const key = apiKey || process.env.ANTHROPIC_API_KEY
     if (!key) {
       return NextResponse.json(
-        {
-          error:
-            'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.',
-        },
+        { error: 'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' },
         { status: 400 },
       )
     }
 
-    // ─── action: suggest ──────────────────────────────────────────────────────
+    // ─── action: suggest ─────────────────────────────────────────────────────
     if (action === 'suggest') {
       const suggestPrompt = `You are a world-class Instagram content strategist for Indian education and career content.
 
@@ -60,18 +63,67 @@ Return ONLY this JSON (no markdown, no explanation):
         body: JSON.stringify({
           model: 'claude-haiku-4-5',
           max_tokens: 1200,
-          system:
-            'You are a world-class social media content strategist. Return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.',
+          system: 'You are a world-class social media content strategist. Return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.',
           messages: [{ role: 'user', content: suggestPrompt }],
         }),
       })
 
       if (!res.ok) {
         const err = await res.text()
-        return NextResponse.json(
-          { error: `Claude API error: ${err}` },
-          { status: 500 },
-        )
+        return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
+      }
+
+      const d = await res.json()
+      const raw = (d.content?.[0]?.text || '').trim()
+      const clean = raw
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```\s*$/i, '')
+        .trim()
+      return NextResponse.json(JSON.parse(clean))
+    }
+
+    // ─── action: enrich (one post at a time, background queue) ───────────────
+    if (action === 'enrich') {
+      const enrichPrompt = `You are a world-class Instagram content strategist for Indian education and career content.
+
+Post details:
+- Title: ${title}
+- Hook: ${hook}
+- Format: ${format}
+- Pillar: ${pillar}
+Channel objective: ${objective}
+Audience: ${audience}
+
+Generate rich production content for this single post.
+
+Return ONLY this JSON (no markdown, no explanation):
+{
+  "content_brief": "2-3 sentence content brief explaining the angle and value",
+  "script": "full production-ready script with timing cues for Reel / slide-by-slide for Carousel / chapter timestamps for Long-form",
+  "ai_prompt": "detailed Midjourney/DALL-E prompt with style, colors, aspect ratio",
+  "cta": "specific call to action",
+  "notes": "1 sentence production note"
+}`
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 900,
+          system: 'You are a world-class social media content strategist. Return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.',
+          messages: [{ role: 'user', content: enrichPrompt }],
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
       }
 
       const d = await res.json()
@@ -82,11 +134,12 @@ Return ONLY this JSON (no markdown, no explanation):
         .replace(/\s*```\s*$/i, '')
         .trim()
 
-      const parsed = JSON.parse(clean)
-      return NextResponse.json(parsed)
+      const enriched = JSON.parse(clean)
+      // postId is passed so caller can PATCH the right row
+      return NextResponse.json({ postId, ...enriched })
     }
 
-    // ─── action: generate (default) ───────────────────────────────────────────
+    // ─── action: generate (default) ──────────────────────────────────────────
     const today = new Date()
     const startDate = new Date(today)
     startDate.setDate(today.getDate() + 1)
@@ -128,7 +181,7 @@ Return ONLY this JSON (no markdown):
     }
   ]
 }`
-      : `Generate a full ${days}-day Instagram content plan.
+      : `Generate a ${days}-day Instagram content plan. Return ONLY skeleton data — no scripts, no ai_prompts, no content_brief (those will be generated separately).
 Channel: ${channelName}
 Objective: ${objective}
 Target Audience: ${audience}
@@ -140,8 +193,6 @@ Rules:
 - 3 posts/week: Reel on Tuesday, Carousel on Thursday, Long-form on Saturday
 - 4 meaningful content pillars specific to the topic
 - Hook formula: Lead with audience belief → break it → replace with truth
-- Scripts: full production-ready (timing cues for Reels, slide-by-slide for Carousels, chapter timestamps for Long-form)
-- AI prompts: detailed enough for Midjourney/DALL-E with style, colors, aspect ratio (9:16 Reels, 4:5 Carousels, 16:9 Long-form)
 - Hashtags: 5-8 per post, mix niche + broad
 - Metric targets: realistic for a growing channel (reach 2k–15k, saves 80–500, shares 40–300)
 - Priority 5 = must-post hero content, 4 = high value, 3 = standard
@@ -159,11 +210,8 @@ Return ONLY this JSON (no markdown):
       "pillar": "pillar name",
       "title": "post title",
       "hook": "opening hook line",
-      "content_brief": "2-3 sentence content brief",
-      "script": "full production script with timing cues",
-      "ai_prompt": "detailed image/video generation prompt",
       "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5",
-      "cta": "call to action",
+      "cta": "",
       "post_date": "Tue, 22 Apr 2026",
       "reach_target": 5000,
       "saves_target": 200,
@@ -171,7 +219,7 @@ Return ONLY this JSON (no markdown):
       "comments_target": 80,
       "plays_target": 8000,
       "priority": 4,
-      "notes": "production note"
+      "notes": ""
     }
   ]
 }`
@@ -193,10 +241,7 @@ Return ONLY this JSON (no markdown):
 
     if (!response.ok) {
       const err = await response.text()
-      return NextResponse.json(
-        { error: `Claude API error: ${err}` },
-        { status: 500 },
-      )
+      return NextResponse.json({ error: `Claude API error: ${err}` }, { status: 500 })
     }
 
     const data = await response.json()
@@ -209,7 +254,6 @@ Return ONLY this JSON (no markdown):
       .trim()
 
     const plan = JSON.parse(clean)
-
     return NextResponse.json(plan)
   } catch (err: unknown) {
     const message = err instanceof Error ? err.message : 'Unknown error'
