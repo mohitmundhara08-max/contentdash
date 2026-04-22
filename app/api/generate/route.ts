@@ -4,6 +4,7 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
     const {
+      action,
       channelName,
       objective,
       audience,
@@ -24,6 +25,68 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    // ─── action: suggest ──────────────────────────────────────────────────────
+    if (action === 'suggest') {
+      const suggestPrompt = `You are a world-class Instagram content strategist for Indian education and career content.
+
+Channel: ${channelName}
+Objective: ${objective}
+Audience: ${audience}
+Current topic/keyword: ${keyword}
+
+Suggest 6 fresh, high-engagement content topic ideas for this channel.
+
+Return ONLY this JSON (no markdown, no explanation):
+{
+  "suggestions": [
+    {
+      "topic": "specific topic or angle",
+      "format": "Reel",
+      "hook": "opening hook line",
+      "reason": "1 sentence why this will perform well",
+      "score": 85,
+      "pillar": "content pillar name"
+    }
+  ]
+}`
+
+      const res = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': key,
+          'anthropic-version': '2023-06-01',
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5',
+          max_tokens: 1200,
+          system:
+            'You are a world-class social media content strategist. Return ONLY valid JSON with no markdown, no code blocks, no explanation — just raw JSON.',
+          messages: [{ role: 'user', content: suggestPrompt }],
+        }),
+      })
+
+      if (!res.ok) {
+        const err = await res.text()
+        return NextResponse.json(
+          { error: `Claude API error: ${err}` },
+          { status: 500 },
+        )
+      }
+
+      const d = await res.json()
+      const raw = (d.content?.[0]?.text || '').trim()
+      const clean = raw
+        .replace(/^```json\s*/i, '')
+        .replace(/^```\s*/i, '')
+        .replace(/\s*```\s*$/i, '')
+        .trim()
+
+      const parsed = JSON.parse(clean)
+      return NextResponse.json(parsed)
+    }
+
+    // ─── action: generate (default) ───────────────────────────────────────────
     const today = new Date()
     const startDate = new Date(today)
     startDate.setDate(today.getDate() + 1)
@@ -137,9 +200,8 @@ Return ONLY this JSON (no markdown):
     }
 
     const data = await response.json()
-const text = (data.content?.[0]?.text || '').trim()
+    const text = (data.content?.[0]?.text || '').trim()
 
-    // More robust fence stripping, but same behaviour
     const clean = text
       .replace(/^```json\s*/i, '')
       .replace(/^```\s*/i, '')
