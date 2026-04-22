@@ -6,8 +6,8 @@ export const dynamic = 'force-dynamic'
 
 // Use model IDs that are actually enabled for your Anthropic account.
 // If Sonnet 4.6 is not available on your account, swap to a model you do have access to.
-const SONNET = 'claude-sonnet-4-6'
-const HAIKU  = 'claude-haiku-4-5'
+const SONNET = 'claude-sonnet-4-5'
+const HAIKU = 'claude-haiku-4-5'
 
 function buildDates(n: number): string[] {
   const dates: string[] = []
