@@ -1,7 +1,7 @@
 'use client'
+
 import { useState, useEffect, useCallback, useRef } from 'react'
 
-// ─── Types ─────────────────────────────────────────────────────────────────
 interface IGAccount { id:string; username:string; name:string; profile_picture_url:string; followers_count:number }
 interface Channel { id:string; name:string; handle:string; objective:string; audience:string; niche:string; color:string; ig_account?:IGAccount }
 interface Post { id:string; plan_id:string; channel_id:string; day:number; week:number; format:string; pillar:string; title:string; hook:string; content_brief:string; script:string; ai_prompt:string; hashtags:string; cta:string; post_date:string; reach_target:number; saves_target:number; shares_target:number; comments_target:number; plays_target:number; priority:number; notes:string }
@@ -9,7 +9,8 @@ interface Suggestion { topic:string; format:string; hook:string; reason:string; 
 interface ViralPattern { topic:string; format:string; trigger:string; hook:string; reach_potential:string; platform:string; example_title:string; reason:string }
 interface AuditResult { profile_strategy:string; content_mix:{reel:number;carousel:number;longform:number;reasoning:string}; posting_frequency:string; whats_working:string[]; whats_missing:string[]; top_improvements:{action:string;impact:string;reason:string}[]; hook_formula:string; growth_levers:string[]; overall_score:number; summary:string }
 
-// ─── Constants ──────────────────────────────────────────────────────────────
+type Tab='calendar'|'tracker'|'pillars'|'strategy'|'viral'|'audit'
+
 const FE: Record<string,string> = { Reel:'🎬', Carousel:'🖼️', 'Long-form':'📹' }
 const FS: Record<string,string> = { Reel:'format-reel', Carousel:'format-carousel', 'Long-form':'format-longform' }
 const PS = ['pillar-0','pillar-1','pillar-2','pillar-3']
@@ -19,8 +20,12 @@ const RC: Record<string,string> = { Viral:'#e94560', High:'#f59e0b', Medium:'#3b
 const IC: Record<string,string> = { High:'#e94560', Medium:'#f59e0b', Low:'#3b82f6' }
 const TC: Record<string,string> = { FOMO:'#e94560', Aspiration:'#3b82f6', 'Pain point':'#f59e0b', Curiosity:'#8b5cf6', Exclusivity:'#10b981' }
 const WT = ['Reality reset','Deep dive','Strategy & tactics','Convert & win']
+const TABS:{ key:Tab; label:string }[]=[
+  {key:'calendar',label:'📅 Calendar'},{key:'tracker',label:'📊 Tracker'},
+  {key:'pillars',label:'🔍 Pillars'},{key:'strategy',label:'🎯 Strategy'},
+  {key:'viral',label:'🔥 Viral'},{key:'audit',label:'📋 Audit'},
+]
 
-// ─── Utils ──────────────────────────────────────────────────────────────────
 function pct(a:number,t:number){return(!t||!a)?null:Math.round(a/t*100)}
 function pc(p:number|null){if(p===null)return'var(--text-muted)';return p>=90?'#34d399':p>=60?'#fbbf24':'#f87171'}
 
@@ -32,26 +37,24 @@ async function af(url:string,opts?:RequestInit){
     if(!res.ok)throw new Error(d.error||`Error ${res.status}`)
     return d
   }catch(e){
-    if(txt.includes('<!DOCTYPE')||txt.includes('<html'))
-      throw new Error(`Route not found (${url}). Paste the latest app/api/generate/route.ts to GitHub and redeploy Vercel.`)
+    if(txt.includes('<!DOCTYPE')||txt.includes('<html')) throw new Error(`Route not found (${url}). Paste the latest app/api/generate/route.ts to GitHub and redeploy Vercel.`)
     throw new Error(e instanceof Error?e.message:`Bad response: ${txt.slice(0,80)}`)
   }
 }
 
-function Sh({h=80}:{h?:number}){return<div className="shimmer" style={{height:h,borderRadius:12}}/>}
+function Sh({h=80}:{h?:number}){return <div className="shimmer" style={{height:h,borderRadius:12}}/>}
 
-// ─── AccountSwitcher ────────────────────────────────────────────────────────
 function AccountSwitcher({channels,active,onSwitch,onAddManual,onDelete}:{channels:Channel[];active:Channel|null;onSwitch:(c:Channel)=>void;onAddManual:()=>void;onDelete:(id:string)=>void}){
   const [open,setOpen]=useState(false)
   const ref=useRef<HTMLDivElement>(null)
   useEffect(()=>{const h=(e:MouseEvent)=>{if(ref.current&&!ref.current.contains(e.target as Node))setOpen(false)};document.addEventListener('mousedown',h);return()=>document.removeEventListener('mousedown',h)},[])
-  return(
+  return (
     <div ref={ref} style={{position:'relative'}}>
       <button onClick={()=>setOpen(o=>!o)} style={{display:'flex',alignItems:'center',gap:8,background:'var(--bg-elevated)',border:'1px solid var(--border)',borderRadius:10,padding:'6px 12px',cursor:'pointer',color:'var(--text-primary)',fontSize:13,minWidth:190}}>
-        {active?<><div style={{width:8,height:8,borderRadius:'50%',background:active.color,flexShrink:0}}/><div style={{flex:1,textAlign:'left',overflow:'hidden'}}><div style={{fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{active.name}</div>{active.handle&&<div style={{fontSize:10,color:'var(--text-muted)'}}>{active.handle}</div>}</div></>:<span style={{color:'var(--text-muted)'}}>Select channel…</span>}
+        {active ? <><div style={{width:8,height:8,borderRadius:'50%',background:active.color,flexShrink:0}}/><div style={{flex:1,textAlign:'left',overflow:'hidden'}}><div style={{fontWeight:500,overflow:'hidden',textOverflow:'ellipsis',whiteSpace:'nowrap'}}>{active.name}</div>{active.handle&&<div style={{fontSize:10,color:'var(--text-muted)'}}>{active.handle}</div>}</div></> : <span style={{color:'var(--text-muted)'}}>Select channel…</span>}
         <span style={{color:'var(--text-muted)',fontSize:10}}>{open?'▴':'▾'}</span>
       </button>
-      {open&&<div style={{position:'absolute',top:'calc(100% + 8px)',left:0,background:'var(--bg-card)',border:'1px solid var(--border-hover)',borderRadius:12,minWidth:250,padding:6,zIndex:100,boxShadow:'0 12px 32px rgba(0,0,0,0.5)'}}>
+      {open && <div style={{position:'absolute',top:'calc(100% + 8px)',left:0,background:'var(--bg-card)',border:'1px solid var(--border-hover)',borderRadius:12,minWidth:250,padding:6,zIndex:100,boxShadow:'0 12px 32px rgba(0,0,0,0.5)'}}>
         {channels.map(ch=>(
           <div key={ch.id} onClick={()=>{onSwitch(ch);setOpen(false)}} style={{display:'flex',alignItems:'center',gap:8,padding:'8px 10px',borderRadius:8,background:active?.id===ch.id?'var(--bg-elevated)':'transparent',cursor:'pointer'}}>
             <div style={{width:26,height:26,borderRadius:'50%',background:ch.color,flexShrink:0,display:'flex',alignItems:'center',justifyContent:'center',fontSize:11,fontWeight:700,color:'white'}}>{ch.name[0]}</div>
@@ -69,7 +72,6 @@ function AccountSwitcher({channels,active,onSwitch,onAddManual,onDelete}:{channe
   )
 }
 
-// ─── GenerateModal ──────────────────────────────────────────────────────────
 function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:Channel;apiKey:string;initialKeyword?:string;onClose:()=>void;onDone:(posts:Post[],meta:Record<string,string>)=>void}){
   const [kw,setKw]=useState(initialKeyword||'')
   const [obj,setObj]=useState(channel.objective)
@@ -87,18 +89,11 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
     if(!apiKey){setErr('Add API key in ⚙️ Settings first');return}
     setSuggesting(true);setErr('');setShowS(true)
     try{
-      const d=await af('/api/generate',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'suggest',channelId:channel.id,niche:channel.niche,objective:obj,audience:aud,apiKey})
-      })
+      const d=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'suggest',channelId:channel.id,niche:channel.niche,objective:obj,audience:aud,apiKey})})
       if(d.error) throw new Error(d.error as string)
       setSuggs(Array.isArray(d.suggestions)?d.suggestions:[])
-    }catch(e:unknown){
-      setErr(e instanceof Error?e.message:'Failed')
-    }finally{
-      setSuggesting(false)
-    }
+    }catch(e:unknown){setErr(e instanceof Error?e.message:'Failed')}
+    finally{setSuggesting(false)}
   }
 
   async function generate(){
@@ -108,25 +103,12 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
     let i=0
     const iv=setInterval(()=>setProg(steps[Math.min(i++,4)]),2000)
     try{
-      const plan=await af('/api/generate',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode:true,apiKey})
-      })
+      const plan=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode:true,apiKey})})
       if(plan.error) throw new Error(plan.error as string)
-      const saved=await af('/api/posts',{
-        method:'POST',
-        headers:{'Content-Type':'application/json'},
-        body:JSON.stringify({plan:{channel_id:channel.id,keyword:kw||channel.niche,duration:dur},posts:plan.posts,channelId:channel.id,strategy:plan.strategy||'',hook_formula:plan.hook_formula||''})
-      })
+      const saved=await af('/api/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:{channel_id:channel.id,keyword:kw||channel.niche,duration:dur},posts:plan.posts,channelId:channel.id,strategy:plan.strategy||'',hook_formula:plan.hook_formula||''})})
       onDone(saved.posts,{strategy:plan.strategy||'',hook_formula:plan.hook_formula||'',pillars:(plan.pillars||[]).join(', ')})
-    }catch(e:unknown){
-      setErr(e instanceof Error?e.message:'Failed — try again')
-    }finally{
-      clearInterval(iv)
-      setLoading(false)
-      setProg('')
-    }
+    }catch(e:unknown){setErr(e instanceof Error?e.message:'Failed — try again')}
+    finally{clearInterval(iv);setLoading(false);setProg('')}
   }
 
   return (
@@ -135,75 +117,35 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
         <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:20}}>
           <div>
             <div style={{fontSize:18,fontWeight:600}}>✨ Generate Content Plan</div>
-            <div style={{fontSize:12,color:'var(--text-secondary)',marginTop:2}}>
-              for <span style={{color:'var(--accent)'}}>{channel.name}</span>
-            </div>
+            <div style={{fontSize:12,color:'var(--text-secondary)',marginTop:2}}>for <span style={{color:'var(--accent)'}}>{channel.name}</span></div>
           </div>
           <button className="btn-ghost" onClick={onClose} style={{padding:'6px 10px'}}>✕</button>
         </div>
-
         <div style={{display:'grid',gap:14}}>
           <div>
             <div style={{display:'flex',justifyContent:'space-between',alignItems:'center',marginBottom:6}}>
-              <div className="section-label" style={{margin:0}}>
-                Topic <span style={{color:'var(--text-muted)',fontWeight:400,fontSize:10}}>(optional — leave blank to auto-pick)</span>
-              </div>
-              <button
-                onClick={getSuggestions}
-                disabled={suggesting}
-                style={{fontSize:11,padding:'3px 10px',background:'rgba(233,69,96,0.12)',color:'var(--accent)',border:'1px solid rgba(233,69,96,0.3)',borderRadius:20,cursor:'pointer'}}
-              >
-                {suggesting ? 'Finding…' : '✨ Suggest topics'}
-              </button>
+              <div className="section-label" style={{margin:0}}>Topic <span style={{color:'var(--text-muted)',fontWeight:400,fontSize:10}}>(optional — leave blank to auto-pick)</span></div>
+              <button onClick={getSuggestions} disabled={suggesting} style={{fontSize:11,padding:'3px 10px',background:'rgba(233,69,96,0.12)',color:'var(--accent)',border:'1px solid rgba(233,69,96,0.3)',borderRadius:20,cursor:'pointer'}}>{suggesting ? 'Finding…' : '✨ Suggest topics'}</button>
             </div>
-
-            <input
-              className="input"
-              placeholder="e.g. UGC NET Paper 1 preparation, or leave blank"
-              value={kw}
-              onChange={e=>setKw(e.target.value)}
-            />
-
-            {showS && (
-              <div style={{marginTop:8,background:'var(--bg-elevated)',borderRadius:10,padding:10,border:'1px solid var(--border)'}}>
-                {suggesting ? (
-                  <div style={{textAlign:'center',padding:'8px 0',fontSize:13,color:'var(--text-secondary)'}}>
-                    Finding best topics for your channel…
+            <input className="input" placeholder="e.g. UGC NET Paper 1 preparation, or leave blank" value={kw} onChange={e=>setKw(e.target.value)} />
+            {showS && <div style={{marginTop:8,background:'var(--bg-elevated)',borderRadius:10,padding:10,border:'1px solid var(--border)'}}>
+              {suggesting ? <div style={{textAlign:'center',padding:'8px 0',fontSize:13,color:'var(--text-secondary)'}}>Finding best topics for your channel…</div> : suggs.map((s,i)=>(
+                <div key={i} onClick={()=>{setKw(s.topic);setShowS(false)}} style={{display:'flex',gap:10,padding:'8px 10px',background:'var(--bg-card)',borderRadius:8,cursor:'pointer',border:'1px solid var(--border)',marginBottom:i<suggs.length-1?7:0}}>
+                  <span style={{fontSize:14,flexShrink:0}}>{FE[s.format]||'📋'}</span>
+                  <div style={{flex:1}}>
+                    <div style={{fontSize:13,fontWeight:500}}>{s.topic}</div>
+                    <div style={{fontSize:11,color:'var(--text-muted)',fontStyle:'italic'}}>"{s.hook}"</div>
+                    <div style={{fontSize:11,color:'var(--text-secondary)',marginTop:2}}>{s.reason}</div>
                   </div>
-                ) : (
-                  suggs.map((s,i)=>(
-                    <div
-                      key={i}
-                      onClick={()=>{setKw(s.topic);setShowS(false)}}
-                      style={{display:'flex',gap:10,padding:'8px 10px',background:'var(--bg-card)',borderRadius:8,cursor:'pointer',border:'1px solid var(--border)',marginBottom:i<suggs.length-1?7:0}}
-                    >
-                      <span style={{fontSize:14,flexShrink:0}}>{FE[s.format]||'📋'}</span>
-                      <div style={{flex:1}}>
-                        <div style={{fontSize:13,fontWeight:500}}>{s.topic}</div>
-                        <div style={{fontSize:11,color:'var(--text-muted)',fontStyle:'italic'}}>"{s.hook}"</div>
-                        <div style={{fontSize:11,color:'var(--text-secondary)',marginTop:2}}>{s.reason}</div>
-                      </div>
-                      <div style={{fontSize:12,fontWeight:700,color:s.score>=8?'#34d399':s.score>=6?'#fbbf24':'var(--text-muted)',flexShrink:0}}>
-                        {s.score}/10
-                      </div>
-                    </div>
-                  ))
-                )}
-              </div>
-            )}
+                  <div style={{fontSize:12,fontWeight:700,color:s.score>=8?'#34d399':s.score>=6?'#fbbf24':'var(--text-muted)',flexShrink:0}}>{s.score}/10</div>
+                </div>
+              ))}
+            </div>}
           </div>
-
           <div style={{display:'grid',gridTemplateColumns:'1fr 1fr',gap:12}}>
-            <div>
-              <div className="section-label">Objective</div>
-              <input className="input" value={obj} onChange={e=>setObj(e.target.value)} />
-            </div>
-            <div>
-              <div className="section-label">Audience</div>
-              <input className="input" value={aud} onChange={e=>setAud(e.target.value)} />
-            </div>
+            <div><div className="section-label">Objective</div><input className="input" value={obj} onChange={e=>setObj(e.target.value)} /></div>
+            <div><div className="section-label">Audience</div><input className="input" value={aud} onChange={e=>setAud(e.target.value)} /></div>
           </div>
-
           <div>
             <div className="section-label">Duration</div>
             <select className="select" style={{width:'100%'}} value={dur} onChange={e=>setDur(+e.target.value)}>
@@ -213,36 +155,18 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
               <option value={60}>60 days — 24 posts</option>
             </select>
           </div>
-
           <div style={{background:'var(--bg-elevated)',borderRadius:10,padding:'10px 14px',fontSize:12,color:'var(--text-secondary)',border:'1px solid var(--border)',lineHeight:1.6}}>
             <div>⚡ <strong>Generates instantly</strong> — {n} posts with titles, hooks, hashtags, and targets</div>
             <div style={{marginTop:4,color:'var(--text-muted)'}}>📝 Scripts and AI image prompts load on demand per post after generating</div>
           </div>
-
-          {err && (
-            <div style={{color:'#f87171',fontSize:12,padding:'10px 12px',background:'rgba(248,113,113,0.1)',borderRadius:8,lineHeight:1.5}}>
-              ⚠️ {err}
-            </div>
-          )}
-
-          {loading ? (
-            <div style={{textAlign:'center',padding:'16px 0'}}>
-              <div style={{fontSize:24,marginBottom:8}}>⚙️</div>
-              <div style={{color:'var(--text-secondary)',fontSize:13}}>{prog}</div>
-              <div style={{display:'flex',justifyContent:'center',gap:4,marginTop:10}}>
-                {[0,1,2].map(i=>(
-                  <div key={i} style={{width:6,height:6,borderRadius:'50%',background:'var(--accent)',animation:`pulse 1.2s ${i*0.2}s infinite`}} />
-                ))}
-              </div>
-            </div>
-          ) : (
-            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
-              <button className="btn-ghost" onClick={onClose}>Cancel</button>
-              <button className="btn-primary" onClick={generate}>Generate {dur}-Day Plan ✨</button>
-            </div>
-          )}
+          {err && <div style={{color:'#f87171',fontSize:12,padding:'10px 12px',background:'rgba(248,113,113,0.1)',borderRadius:8,lineHeight:1.5}}>⚠️ {err}</div>}
+          {loading ? <div style={{textAlign:'center',padding:'16px 0'}}><div style={{fontSize:24,marginBottom:8}}>⚙️</div><div style={{color:'var(--text-secondary)',fontSize:13}}>{prog}</div><div style={{display:'flex',justifyContent:'center',gap:4,marginTop:10}}>{[0,1,2].map(i=><div key={i} style={{width:6,height:6,borderRadius:'50%',background:'var(--accent)',animation:`pulse 1.2s ${i*0.2}s infinite`}} />)}</div></div> : <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={generate}>Generate {dur}-Day Plan ✨</button></div>}
         </div>
       </div>
     </div>
   )
+}
+
+export default function DashboardClient(){
+  return <div>Replace this stub with your existing working dashboard body. The key fix is this file now has a default export.</div>
 }
