@@ -631,7 +631,7 @@ export default function Dashboard(){
   async function findViral(){
     if(!active||!apiKey)return setViralE(!apiKey?'Add API key in ⚙️ Settings':'No channel selected')
     setViralL(true);setViralE('')
-    try{const d=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'viral',niche:active.niche,handle:active.handle,objective:active.objective,audience:active.audience,apiKey})});if(d.error)throw new Error(d.error);setViralP(d.viral_patterns||[]);setViralI(d.insight||'')}
+    try{const d=await af('/api/viral',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'viral',niche:active.niche,handle:active.handle,objective:active.objective,audience:active.audience,apiKey})});if(d.error)throw new Error(d.error);setViralP(d.viral_patterns||[]);setViralI(d.insight||'')}
     catch(e:unknown){setViralE(e instanceof Error?e.message:'Failed')}
     finally{setViralL(false)}
   }
