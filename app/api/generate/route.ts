@@ -1,153 +1,102 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { supabase } from '@/lib/supabase'
 
-// CRITICAL: Vercel default is 10s — Claude generation needs 20-40s
 export const maxDuration = 60
 export const dynamic = 'force-dynamic'
+
+async function callClaude(key: string, model: string, prompt: string, maxTokens = 6000) {
+  const res = await fetch('https://api.anthropic.com/v1/messages', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
+    body: JSON.stringify({ model, max_tokens: maxTokens, messages: [{ role: 'user', content: prompt }] }),
+  })
+  if (!res.ok) {
+    const err = await res.text()
+    throw new Error(`Claude API ${res.status}: ${err.slice(0, 200)}`)
+  }
+  const data = await res.json()
+  const text = data.content?.[0]?.text?.trim() || ''
+  const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
+  try { return JSON.parse(clean) } catch { throw new Error('AI returned invalid JSON — please try again') }
+}
+
+async function handleSuggest(body: Record<string, string>, key: string) {
+  let pastPosts: string[] = []
+  if (body.channelId) {
+    const { data } = await supabase.from('ig_posts').select('title, format').eq('channel_id', body.channelId).order('created_at', { ascending: false }).limit(20)
+    if (data?.length) pastPosts = data.map((p: Record<string, string>) => `[${p.format}] ${p.title}`)
+  }
+  const result = await callClaude(key, 'claude-haiku-4-5-20251001',
+    `Viral content strategist for Indian Instagram/YouTube.
+Niche: ${body.niche} | Objective: ${body.objective} | Audience: ${body.audience}
+${pastPosts.length ? `Past posts (avoid repeating):\n${pastPosts.join('\n')}` : ''}
+Give 8 high-potential topic suggestions. Return ONLY JSON:
+{ "suggestions": [{ "topic":"string","format":"Reel","hook":"Hinglish hook","reason":"why it works","score":8,"pillar":"pillar" }] }`, 2000)
+  return NextResponse.json(result)
+}
+
+async function handleViral(body: Record<string, string>, key: string) {
+  const result = await callClaude(key, 'claude-sonnet-4-6',
+    `Viral content analyst for Indian Instagram/YouTube.
+Niche: ${body.niche} | Objective: ${body.objective} | Audience: ${body.audience}${body.handle ? ` | Handle: ${body.handle}` : ''}
+Identify top 10 viral content patterns for this exact niche/audience right now.
+Return ONLY JSON:
+{ "viral_patterns": [{ "topic":"string","format":"Reel","trigger":"FOMO","hook":"Hinglish hook","reach_potential":"Viral","platform":"Reels","example_title":"exact viral title","reason":"why it works" }], "insight":"one key niche insight" }`, 3000)
+  return NextResponse.json(result)
+}
+
+async function handleAudit(body: Record<string, string>, key: string) {
+  const result = await callClaude(key, 'claude-sonnet-4-6',
+    `Expert Instagram growth strategist. Do a channel audit.
+Handle: ${body.handle || 'not provided'} | Niche: ${body.niche} | Objective: ${body.objective} | Audience: ${body.audience}
+Return ONLY JSON:
+{ "profile_strategy":"string","content_mix":{"reel":40,"carousel":40,"longform":20,"reasoning":"string"},"posting_frequency":"string","whats_working":["string"],"whats_missing":["string"],"top_improvements":[{"action":"string","impact":"High","reason":"string"}],"hook_formula":"string","growth_levers":["string"],"overall_score":7,"summary":"string" }`, 3000)
+  return NextResponse.json(result)
+}
+
+async function handleGenerate(body: Record<string, unknown>, key: string) {
+  const { channelName, objective, audience, keyword, duration, quickMode } = body as Record<string, string>
+  const dur = Number(duration) || 30
+  const postsCount = Math.ceil(dur / 7) * 3
+
+  const today = new Date(); today.setDate(today.getDate() + 1)
+  const postDates: string[] = []
+  const d = new Date(today)
+  while (postDates.length < postsCount) {
+    if ([2,4,6].includes(d.getDay())) postDates.push(d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' }))
+    d.setDate(d.getDate() + 1)
+  }
+
+  const prompt = quickMode
+    ? `${dur}-day Instagram plan, ${postsCount} posts. Channel: ${channelName}. Objective: ${objective}. Audience: ${audience}. Topic: ${keyword || 'derive from channel objective'}.
+Return ONLY JSON: { "pillars":["p1","p2","p3","p4"],"strategy":"string","hook_formula":"string","posts":[{ "day":1,"week":1,"format":"Reel","pillar":"string","title":"string","hook":"Hinglish hook","hashtags":"#tag1 #tag2","cta":"string","post_date":"${postDates[0]}","reach_target":5000,"saves_target":150,"shares_target":80,"comments_target":60,"plays_target":8000,"priority":4,"notes":"" }] }`
+    : `Full ${dur}-day Instagram content plan, ${postsCount} posts.
+Channel: ${channelName} | Objective: ${objective} | Audience: ${audience}
+${keyword ? `Topic: ${keyword}` : 'Derive best topics from channel objective and audience.'}
+Rules: Reel=Tuesday, Carousel=Thursday, Long-form=Saturday. Hooks in Hinglish where appropriate.
+Scripts: 🎬 HOOK / 📢 VOICEOVER / 📋 BODY (3 points) / ✅ CTA for Reels. Slide-by-slide for Carousels. Chapter timestamps for Long-form.
+AI prompts: Midjourney/DALL-E ready with style, aspect ratio (9:16 Reels, 4:5 Carousels, 16:9 Long-form), Indian context.
+Post dates in order: ${postDates.join(', ')}
+Return ONLY JSON: { "pillars":["p1","p2","p3","p4"],"strategy":"string","hook_formula":"string","posts":[{ "day":1,"week":1,"format":"Reel","pillar":"string","title":"string","hook":"hook","content_brief":"brief","script":"FULL script with 🎬/📢/📋/✅ cues","ai_prompt":"detailed AI generation prompt","hashtags":"#tag1 #tag2 #tag3 #tag4 #tag5","cta":"cta","post_date":"${postDates[0]}","reach_target":5000,"saves_target":200,"shares_target":100,"comments_target":80,"plays_target":8000,"priority":4,"notes":"note" }] }`
+
+  const plan = await callClaude(key, 'claude-opus-4-6', prompt, 8000)
+  if (!plan.posts?.length) throw new Error('No posts returned — try again')
+  return NextResponse.json(plan)
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json()
-    const { channelName, objective, audience, keyword, duration, quickMode, apiKey } = body
-
-    const key = apiKey || process.env.ANTHROPIC_API_KEY
-    if (!key) {
-      return NextResponse.json(
-        { error: 'No Anthropic API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' },
-        { status: 400 }
-      )
-    }
-
-    const today     = new Date()
-    const startDate = new Date(today)
-    startDate.setDate(today.getDate() + 1)
-    const postsCount = Math.ceil(duration / 7) * 3
-
-    // Build post dates (Tue/Thu/Sat pattern)
-    const postDates: string[] = []
-    const d = new Date(startDate)
-    const targets = [2, 4, 6] // Tue=2, Thu=4, Sat=6
-    while (postDates.length < postsCount) {
-      if (targets.includes(d.getDay())) {
-        postDates.push(d.toLocaleDateString('en-GB', { weekday:'short', day:'numeric', month:'short', year:'numeric' }))
-      }
-      d.setDate(d.getDate() + 1)
-    }
-
-    const systemPrompt = `You are a world-class social media content strategist for Indian education and career content. Return ONLY valid JSON — no markdown, no code fences, no explanation. All text content can be in Hinglish (Hindi+English mix) where appropriate for the audience.`
-
-    const userPrompt = quickMode
-      ? `Generate a ${duration}-day Instagram content plan with ${postsCount} posts.
-Channel: ${channelName}
-Objective: ${objective}
-Audience: ${audience}
-Topic: ${keyword || 'Based on the channel objective and audience'}
-
-Return ONLY this JSON:
-{
-  "pillars": ["pillar1","pillar2","pillar3","pillar4"],
-  "strategy": "2-sentence strategy",
-  "hook_formula": "hook formula for this audience",
-  "posts": [
-    {
-      "day": 1, "week": 1,
-      "format": "Reel",
-      "pillar": "pillar name",
-      "title": "post title",
-      "hook": "opening hook line in Hinglish",
-      "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5",
-      "cta": "call to action",
-      "post_date": "${postDates[0]}",
-      "reach_target": 5000, "saves_target": 150, "shares_target": 80, "comments_target": 60, "plays_target": 8000,
-      "priority": 4, "notes": ""
-    }
-  ]
-}`
-      : `Generate a full ${duration}-day Instagram content plan with ${postsCount} posts.
-Channel: ${channelName}
-Objective: ${objective}
-Target Audience: ${audience}
-${keyword ? `Topic/Keyword: ${keyword}` : `Derive the best topics from the channel objective and audience.`}
-
-Rules:
-- Reel on Tuesday, Carousel on Thursday, Long-form on Saturday
-- 4 content pillars specific to this audience
-- All hooks and scripts can be Hinglish where it suits the audience
-- Scripts: full production-ready (🎬 HOOK, 📢 VOICEOVER, 📋 BODY, ✅ CTA format for Reels; slide-by-slide for Carousels; chapter timestamps for Long-form)
-- AI prompts: detailed for Midjourney/DALL-E — include style, colors, aspect ratio (9:16 Reels, 4:5 Carousels, 16:9 Long-form), Indian context
-- Hook formula: belief → break it → replace with truth
-- Use these exact post dates in order: ${postDates.join(', ')}
-
-Return ONLY this JSON:
-{
-  "pillars": ["pillar1","pillar2","pillar3","pillar4"],
-  "strategy": "2-3 sentence content strategy",
-  "hook_formula": "the specific hook formula for this audience",
-  "posts": [
-    {
-      "day": 1, "week": 1,
-      "format": "Reel",
-      "pillar": "pillar name",
-      "title": "post title",
-      "hook": "hook line in Hinglish if appropriate",
-      "content_brief": "2-3 sentence brief",
-      "script": "full production script — for Reels use 🎬 HOOK / 📢 VOICEOVER / 📋 BODY / ✅ CTA format with timing cues. For Carousels use 📱 SLIDE 1 — COVER: / 📱 SLIDE 2: etc. For Long-form use chapter timestamps.",
-      "ai_prompt": "detailed AI image/video generation prompt with style, aspect ratio, Indian context",
-      "hashtags": "#tag1 #tag2 #tag3 #tag4 #tag5 #tag6",
-      "cta": "call to action text",
-      "post_date": "${postDates[0]}",
-      "reach_target": 5000,
-      "saves_target": 200,
-      "shares_target": 100,
-      "comments_target": 80,
-      "plays_target": 8000,
-      "priority": 4,
-      "notes": "production note"
-    }
-  ]
-}`
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type':      'application/json',
-        'x-api-key':         key,
-        'anthropic-version': '2023-06-01',
-      },
-      body: JSON.stringify({
-        model:      'claude-opus-4-5',
-        max_tokens: 8000,
-        system:     systemPrompt,
-        messages:   [{ role: 'user', content: userPrompt }],
-      }),
-    })
-
-    if (!response.ok) {
-      const errText = await response.text()
-      console.error('Anthropic API error:', response.status, errText)
-      return NextResponse.json({ error: `Claude API error (${response.status}): ${errText.slice(0, 200)}` }, { status: 500 })
-    }
-
-    const data  = await response.json()
-    const text  = data.content?.[0]?.text?.trim() || ''
-    // Strip any accidental markdown fences
-    const clean = text.replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim()
-
-    let plan
-    try {
-      plan = JSON.parse(clean)
-    } catch {
-      console.error('JSON parse failed. Raw:', clean.slice(0, 500))
-      return NextResponse.json({ error: 'AI returned invalid JSON. Please try again.' }, { status: 500 })
-    }
-
-    if (!plan.posts?.length) {
-      return NextResponse.json({ error: 'No posts returned. Try again.' }, { status: 500 })
-    }
-
-    return NextResponse.json(plan)
+    const key = body.apiKey || process.env.ANTHROPIC_API_KEY
+    if (!key) return NextResponse.json({ error: 'No API key. Add it in ⚙️ Settings or set ANTHROPIC_API_KEY in Vercel env vars.' }, { status: 400 })
+    const action = body.action || 'generate'
+    if (action === 'suggest') return handleSuggest(body, key)
+    if (action === 'viral')   return handleViral(body, key)
+    if (action === 'audit')   return handleAudit(body, key)
+    return handleGenerate(body, key)
   } catch (err: unknown) {
-    const message = err instanceof Error ? err.message : 'Unknown error'
-    console.error('Generate route error:', message)
-    return NextResponse.json({ error: message }, { status: 500 })
+    const msg = err instanceof Error ? err.message : 'Unknown error'
+    console.error('generate route error:', msg)
+    return NextResponse.json({ error: msg }, { status: 500 })
   }
 }
