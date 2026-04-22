@@ -122,9 +122,19 @@ Reply with ONLY this JSON, filling every field with real specific content:
     }
   ]
 }`
-    return streamIt(key, HAIKU, SYS, prompt, n * 130 + 400,
-      d => { if (!Array.isArray((d as {posts?:unknown[]}).posts)) throw new Error('No posts returned — try again') })
-  }
+    const maxOut = Math.min(n * 200 + 600, 3800)
+    return streamIt(
+  key,
+  HAIKU,
+  SYS,
+  prompt,
+  maxOut,
+  d => {
+    if (!Array.isArray((d as { posts?: unknown[] }).posts)) {
+      throw new Error('No posts returned — try again')
+    }
+  },
+)
 
   // FULL: Sonnet, all fields, scripts loaded on-demand per post
   const prompt = `Create a ${dur}-day Instagram content calendar with ${n} posts.
@@ -217,7 +227,7 @@ Goal: ${b.objective}
 Audience: ${b.audience}
 ${b.handle ? `Handle: ${b.handle}` : ''}
 
-Identify the top 10 content patterns that are going viral right now for this specific niche and audience in India.
+Identify the top 6 content patterns that are going viral right now for this specific niche and audience in India.
 
 Reply with ONLY this JSON — fill every field with real, specific content:
 {
@@ -235,7 +245,7 @@ Reply with ONLY this JSON — fill every field with real, specific content:
   ],
   "insight": "Write 1-2 sentences about the single most important content opportunity in this niche right now."
 }`
-  return streamIt(key, SONNET, SYS, prompt, 2200)
+  return streamIt(key, SONNET, SYS, prompt, 2800)
 }
 
 // ── AUDIT ─────────────────────────────────────────────────────────────────────
@@ -284,7 +294,7 @@ Reply with ONLY this JSON — every field must have real specific content, not g
   "overall_score": 6,
   "summary": "Write 2-3 honest sentences assessing this channel's current strategy and biggest opportunity."
 }`
-  return streamIt(key, SONNET, SYS, prompt, 2200)
+  return streamIt(key, SONNET, SYS, prompt, 3000)
 }
 
 // ── MAIN ──────────────────────────────────────────────────────────────────────
