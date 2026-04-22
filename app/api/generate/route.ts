@@ -192,7 +192,7 @@ Reply with ONLY this JSON, filling every field with real specific content:
       HAIKU,
       SYS,
       prompt,
-      n * 130 + 400,
+      n * 250 + 600,
       d => {
         if (!Array.isArray((d as { posts?: unknown[] }).posts)) {
           throw new Error('No posts returned — try again')
@@ -228,7 +228,7 @@ Reply with ONLY this JSON, filling EVERY field with real, specific, actionable c
   ]
 }`
 
-  const maxTok = Math.min(n * 480 + 500, 8000)
+  const maxTok = Math.min(n * 480 + 500, 12000)
   return streamIt(
     key,
     SONNET,
@@ -320,7 +320,7 @@ Reply with ONLY this JSON — fill every field with real, specific content:
   "insight": "Write 1-2 sentences about the single most important content opportunity in this niche right now."
 }`
 
-  return streamIt(key, SONNET, SYS, prompt, 2200)
+  return streamIt(key, SONNET, SYS, prompt, 3500)
 }
 
 function doAudit(b: Record<string, string>, key: string): Response {
@@ -369,7 +369,7 @@ Reply with ONLY this JSON — every field must have real specific content, not g
   "summary": "Write 2-3 honest sentences assessing this channel's current strategy and biggest opportunity."
 }`
 
-  return streamIt(key, SONNET, SYS, prompt, 2200)
+  return streamIt(key, SONNET, SYS, prompt, 3500)
 }
 
 export async function POST(req: NextRequest) {
