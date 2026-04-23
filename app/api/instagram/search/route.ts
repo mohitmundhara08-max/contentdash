@@ -1,5 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server'
 
+interface IGUser {
+  username: string
+  full_name?: string
+  profile_pic_url?: string
+  follower_count?: number
+  is_verified?: boolean
+  biography?: string
+  category_name?: string
+}
+
 export async function GET(req: NextRequest) {
   const q = req.nextUrl.searchParams.get('q')
   if (!q || q.length < 2) return NextResponse.json({ users: [] })
@@ -18,7 +28,7 @@ export async function GET(req: NextRequest) {
           'x-rapidapi-host': 'instagram120.p.rapidapi.com',
           'x-rapidapi-key': apiKey,
         },
-        next: { revalidate: 60 }, // cache results 60s to save quota
+        next: { revalidate: 60 },
       }
     )
 
@@ -30,19 +40,19 @@ export async function GET(req: NextRequest) {
     const data = await res.json()
 
     // instagram120 returns { data: { users: [ { user: { ... } } ] } }
-    const raw: Array<{ user?: Record<string, unknown> }> = data?.data?.users ?? []
+    const raw: Array<{ user?: IGUser } | IGUser> = data?.data?.users ?? []
 
     const users = raw
       .map((item) => {
-        const u = item?.user ?? item ?? {}
+        const u: IGUser = ('user' in item && item.user ? item.user : item) as IGUser
         return {
-          username: u.username as string ?? '',
-          full_name: (u.full_name as string) || (u.username as string) || '',
-          profile_pic_url: (u.profile_pic_url as string) || '',
-          follower_count: (u.follower_count as number) || 0,
-          is_verified: (u.is_verified as boolean) || false,
-          biography: (u.biography as string) || '',
-          category: (u.category_name as string) || '',
+          username: u.username ?? '',
+          full_name: u.full_name || u.username || '',
+          profile_pic_url: u.profile_pic_url || '',
+          follower_count: u.follower_count || 0,
+          is_verified: u.is_verified || false,
+          biography: u.biography || '',
+          category: u.category_name || '',
         }
       })
       .filter((u) => u.username)
