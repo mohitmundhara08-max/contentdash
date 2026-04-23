@@ -610,12 +610,18 @@ export default function Dashboard(){
 
   useEffect(()=>{setApiKey(localStorage.getItem('anthropic_api_key')||'');loadChannels()},[])
 
-  const loadPosts=useCallback(async(cid:string)=>{
-    setPostsLoading(true)
-    try{const d=await af(`/api/posts?channelId=${cid}`);const p:Post[]=Array.isArray(d)?d:[];setPosts(p);setPillars([...new Set(p.map(x=>x.pillar))].filter(Boolean))}
-    catch(e){console.error('loadPosts',e)}
-    finally{setLoading(false);setPostsLoading(false)}
-  },[])
+  const loadPosts = useCallback(async (cid: string) => {
+  setPostsLoading(true)
+  try {
+    const d = await af(`/api/posts?channelId=${cid}`)
+    // d is now { posts: [...], meta: {...} }
+    const p: Post[] = Array.isArray(d) ? d : (d.posts ?? [])
+    setPosts(p)
+    setPillars([...new Set(p.map((x: Post) => x.pillar))].filter(Boolean))
+    if (d.meta) setMeta(d.meta)  // ← restores strategy+hook on refresh
+  } catch (e) { console.error('loadPosts', e) }
+  finally { setLoading(false); setPostsLoading(false) }
+}, [])
 
   async function loadChannels(){
     setLoading(true)
@@ -626,13 +632,13 @@ export default function Dashboard(){
     }catch(e){console.error('loadChannels',e);setLoading(false)}
   }
 
-  function switchChannel(ch:Channel){setActive(ch);setPosts([]);setPillars([]);setMeta({});localStorage.setItem('active_channel_id',ch.id);loadPosts(ch.id)}
-  async function deleteChannel(id:string){
-    if(!confirm('Remove this channel?'))return
-    await af('/api/channels',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
-    const u=channels.filter(c=>c.id!==id);setChannels(u)
-    if(active?.id===id){localStorage.removeItem('active_channel_id');u.length>0?switchChannel(u[0]):(setActive(null),setPosts([]),setPillars([]))}
-  }
+  function switchChannel(ch:Channel){
+  setActive(ch);setPosts([]);setPillars([]);setMeta({});
+  // Reset per-channel viral + audit state
+  setViralP([]);setViralI('');setViralE('');
+  setAudit(null);setAuditE('');
+  localStorage.setItem('active_channel_id',ch.id);loadPosts(ch.id)
+}
   function onChannelAdded(ch:Channel){setChannels(p=>[...p,ch]);setShowAdd(false);switchChannel(ch)}
   function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
   function saveKey(k:string){setApiKey(k);localStorage.setItem('anthropic_api_key',k)}
