@@ -582,7 +582,13 @@ const TABS:{ key:Tab; label:string }[]=[
   {key:'pillars',label:'🔍 Pillars'},{key:'strategy',label:'🎯 Strategy'},
   {key:'viral',label:'🔥 Viral'},{key:'audit',label:'📋 Audit'},
 ]
-
+function getCookie(name:string){
+  const m=document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)')
+  return m?decodeURIComponent(m[2]):null
+}
+function setCookie(name:string,value:string){
+  document.cookie=`${name}=${encodeURIComponent(value)};path=/;max-age=31536000`
+}
 export default function Dashboard(){
   const [channels,setChannels]=useState<Channel[]>([])
   const [active,setActive]=useState<Channel|null>(null)
@@ -608,7 +614,11 @@ export default function Dashboard(){
   const [showSet,setShowSet]=useState(false)
   const [genTopic,setGenTopic]=useState('')
 
-  useEffect(()=>{setApiKey(localStorage.getItem('anthropic_api_key')||'');loadChannels()},[])
+  // AFTER
+useEffect(()=>{
+  setApiKey(getCookie('anthropic_api_key')||'')
+  loadChannels()
+},[])
 
   const loadPosts = useCallback(async (cid: string) => {
   setPostsLoading(true)
@@ -627,7 +637,7 @@ export default function Dashboard(){
     setLoading(true)
     try{
       const d=await af('/api/channels');const chs:Channel[]=Array.isArray(d)?d:[];setChannels(chs)
-      if(chs.length>0){const sid=localStorage.getItem('active_channel_id');const ta=chs.find(c=>c.id===sid)||chs[0];setActive(ta);await loadPosts(ta.id)}
+      if(chs.length>0){const sid=getCookie('active_channel_id');const ta=chs.find(c=>c.id===sid)||chs[0];setActive(ta);await loadPosts(ta.id)}
       else setLoading(false)
     }catch(e){console.error('loadChannels',e);setLoading(false)}
   }
@@ -637,12 +647,13 @@ export default function Dashboard(){
   // Reset per-channel viral + audit state
   setViralP([]);setViralI('');setViralE('');
   setAudit(null);setAuditE('');
-  localStorage.setItem('active_channel_id',ch.id);loadPosts(ch.id)
+  // AFTER
+setCookie('active_channel_id',ch.id)
 }
   function onChannelAdded(ch:Channel){setChannels(p=>[...p,ch]);setShowAdd(false);switchChannel(ch)}
   function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
-function saveKey(k:string){setApiKey(k);localStorage.setItem('anthropic_api_key',k)}
-
+// AFTER
+function saveKey(k:string){setApiKey(k);setCookie('anthropic_api_key',k)}
 async function deleteChannel(id:string){
   try{
     await af('/api/channels',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
