@@ -233,7 +233,7 @@ Return ONLY this JSON (no markdown):
       },
       body: JSON.stringify({
         model: quickMode ? 'claude-haiku-4-5' : 'claude-opus-4-5',
-max_tokens: quickMode ? 3000 : 8000,
+max_tokens: quickMode ? 6000 : 8000,
         system: systemPrompt,
         messages: [{ role: 'user', content: userPrompt }],
       }),
