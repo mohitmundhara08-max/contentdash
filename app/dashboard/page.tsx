@@ -81,6 +81,7 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
   const [prog,setProg]=useState('')
   const [err,setErr]=useState('')
   const n=Math.max(Math.floor(dur/7)*3,3)
+  const [quickMode, setQuickMode] = useState(true)
 
   async function getSuggestions(){
     if(!apiKey)return setErr('Add API key in ⚙️ Settings first')
@@ -100,7 +101,7 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
     let i=0;const iv=setInterval(()=>setProg(steps[Math.min(i++,4)]),2000)
     try{
       // Always generate quick basic plan — scripts load on demand per post
-      const plan=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode:true,apiKey})})
+      const plan=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode,apiKey})})
       if(plan.error)throw new Error(plan.error as string)
       const saved=await af('/api/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:{channel_id:channel.id,keyword:kw||channel.niche,duration:dur},posts:plan.posts,channelId:channel.id,strategy:plan.strategy||'',hook_formula:plan.hook_formula||''})})
       onDone(saved.posts,{strategy:plan.strategy||'',hook_formula:plan.hook_formula||'',pillars:(plan.pillars||[]).join(', ')})
@@ -153,6 +154,15 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
           </div>
 
           {/* Info */}
+          <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'var(--bg-elevated)',borderRadius:10,border:'1px solid var(--border)'}}>
+  <div style={{flex:1}}>
+    <div style={{fontSize:13,fontWeight:500}}>{quickMode ? '⚡ Quick Mode' : '🧠 Full Mode'}</div>
+    <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{quickMode ? 'Haiku — fast & cheap, great for most plans' : 'Opus — slower, richer hooks & strategy'}</div>
+  </div>
+  <button onClick={()=>setQuickMode(q=>!q)} style={{padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:600,border:'1px solid var(--border)',background:quickMode?'rgba(233,69,96,0.15)':'rgba(59,130,246,0.15)',color:quickMode?'var(--accent)':'#3b82f6',cursor:'pointer'}}>
+    {quickMode ? 'Quick' : 'Full'}
+  </button>
+</div>
           <div style={{background:'var(--bg-elevated)',borderRadius:10,padding:'10px 14px',fontSize:12,color:'var(--text-secondary)',border:'1px solid var(--border)',lineHeight:1.6}}>
             <div>⚡ <strong>Generates instantly</strong> — {n} posts with titles, hooks, hashtags, and targets</div>
             <div style={{marginTop:4,color:'var(--text-muted)'}}>📝 Scripts and AI image prompts load on demand per post after generating</div>
