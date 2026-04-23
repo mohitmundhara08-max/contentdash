@@ -642,13 +642,12 @@ useEffect(()=>{
     }catch(e){console.error('loadChannels',e);setLoading(false)}
   }
 
-  function switchChannel(ch:Channel){
+ function switchChannel(ch:Channel){
   setActive(ch);setPosts([]);setPillars([]);setMeta({});
-  // Reset per-channel viral + audit state
   setViralP([]);setViralI('');setViralE('');
   setAudit(null);setAuditE('');
-  // AFTER
-setCookie('active_channel_id',ch.id)
+  setCookie('active_channel_id',ch.id);
+  loadPosts(ch.id)  // ← ADD THIS LINE
 }
   function onChannelAdded(ch:Channel){setChannels(p=>[...p,ch]);setShowAdd(false);switchChannel(ch)}
   function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
