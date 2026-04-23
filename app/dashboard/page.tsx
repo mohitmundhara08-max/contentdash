@@ -10,7 +10,7 @@ interface ViralPattern { topic:string; format:string; trigger:string; hook:strin
 interface AuditResult { profile_strategy:string; content_mix:{reel:number;carousel:number;longform:number;reasoning:string}; posting_frequency:string; whats_working:string[]; whats_missing:string[]; top_improvements:{action:string;impact:string;reason:string}[]; hook_formula:string; growth_levers:string[]; overall_score:number; summary:string }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const FE: Record<string,string> = { Reel:'🎬', Carousel:'🖼️', 'Long-form':'📹' }
+const FE: Record<string,string> = { aReel:'🎬', Carousel:'🖼️', 'Long-form':'📹' }
 const FS: Record<string,string> = { Reel:'format-reel', Carousel:'format-carousel', 'Long-form':'format-longform' }
 const PS = ['pillar-0','pillar-1','pillar-2','pillar-3']
 const PC = ['#3b82f6','#10b981','#f59e0b','#e94560']
@@ -649,8 +649,7 @@ useEffect(()=>{
   setCookie('active_channel_id',ch.id);
   loadPosts(ch.id)  // ← ADD THIS LINE
 }
-  function onChannelAdded(ch:Channel){setShowAdd(false);loadChannels()}
-  function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
+async function onChannelAdded(ch:Channel){setShowAdd(false);await loadChannels();switchChannel(ch)}  function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
 // AFTER
 function saveKey(k:string){setApiKey(k);setCookie('anthropic_api_key',k)}
 async function deleteChannel(id:string){
