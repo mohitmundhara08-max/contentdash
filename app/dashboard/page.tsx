@@ -641,7 +641,19 @@ export default function Dashboard(){
 }
   function onChannelAdded(ch:Channel){setChannels(p=>[...p,ch]);setShowAdd(false);switchChannel(ch)}
   function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
-  function saveKey(k:string){setApiKey(k);localStorage.setItem('anthropic_api_key',k)}
+function saveKey(k:string){setApiKey(k);localStorage.setItem('anthropic_api_key',k)}
+
+async function deleteChannel(id:string){
+  try{
+    await af('/api/channels',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
+    const remaining=channels.filter(c=>c.id!==id)
+    setChannels(remaining)
+    if(active?.id===id){
+      if(remaining.length>0){switchChannel(remaining[0])}
+      else{setActive(null);setPosts([]);setPillars([]);setMeta({})}
+    }
+  }catch(e){console.error('deleteChannel',e)}
+}
   function useViralTopic(t:string){setGenTopic(t);setShowGen(true)}
 
   async function findViral(){
