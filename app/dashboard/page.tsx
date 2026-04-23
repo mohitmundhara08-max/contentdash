@@ -236,7 +236,6 @@ function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)
     setSelected(u)
     setQ(u.full_name || u.username)
     s('name',u.full_name || u.username)
-    s('handle',`@${u.username}`)
     if(!f.niche && u.category) s('niche',u.category)
     setShowResults(false)
   }
@@ -363,18 +362,29 @@ function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)
             </div>
           )}
 
-          {([
-            ['Channel Name *','name','e.g. Testbook AP Channel'],
-            ['Instagram Handle','handle','@testbook_ap'],
-            ['Niche / Category','niche','e.g. EdTech, Career, Fitness'],
-            ['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],
-            ['Audience *','audience','e.g. UGC NET qualifiers']
-          ] as const).map(([l,k,ph])=>(
-            <div key={k}>
-              <div className="section-label">{l}</div>
-              <input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)} />
-            </div>
-          ))}
+          {/* Name — auto-filled from search, editable */}
+<div>
+  <div className="section-label">Channel Name *</div>
+  <input
+    className="input"
+    placeholder="e.g. Testbook AP Channel"
+    value={f.name}
+    onChange={e=>s('name',e.target.value)}
+    style={selected ? {background:'var(--bg-elevated)',color:'var(--text-secondary)'} : {}}
+  />
+</div>
+
+{/* Manual fields — no handle */}
+{([
+  ['Niche / Category','niche','e.g. EdTech, Career, Fitness'],
+  ['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],
+  ['Audience *','audience','e.g. UGC NET qualifiers']
+] as const).map(([l,k,ph])=>(
+  <div key={k}>
+    <div className="section-label">{l}</div>
+    <input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)} />
+  </div>
+))}
 
           <div>
             <div className="section-label">Colour</div>
