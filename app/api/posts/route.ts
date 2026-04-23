@@ -86,11 +86,49 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: planError.message }, { status: 500 })
     }
 
-    // 2) Insert new posts
-    const rows = (posts || []).map((post: any) => ({
-      ...post,
+    // 2) Insert posts with explicit column mapping — never spread raw AI output
+    const rows = (posts || []).map((post: {
+      day?: number
+      week?: number
+      format?: string
+      pillar?: string
+      title?: string
+      hook?: string
+      content_brief?: string
+      script?: string
+      ai_prompt?: string
+      hashtags?: string
+      cta?: string
+      post_date?: string
+      reach_target?: number
+      saves_target?: number
+      shares_target?: number
+      comments_target?: number
+      plays_target?: number
+      priority?: number
+      notes?: string
+    }) => ({
       plan_id: savedPlan.id,
       channel_id: channelId,
+      day: post.day ?? 1,
+      week: post.week ?? 1,
+      format: post.format ?? 'Reel',
+      pillar: post.pillar ?? '',
+      title: post.title ?? '',
+      hook: post.hook ?? '',
+      content_brief: post.content_brief ?? '',
+      script: post.script ?? '',
+      ai_prompt: post.ai_prompt ?? '',
+      hashtags: post.hashtags ?? '',
+      cta: post.cta ?? '',
+      post_date: post.post_date ?? '',
+      reach_target: post.reach_target ?? 0,
+      saves_target: post.saves_target ?? 0,
+      shares_target: post.shares_target ?? 0,
+      comments_target: post.comments_target ?? 0,
+      plays_target: post.plays_target ?? 0,
+      priority: post.priority ?? 3,
+      notes: post.notes ?? '',
     }))
 
     const { data: savedPosts, error: postsError } = await supabase
