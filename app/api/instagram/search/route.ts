@@ -6,14 +6,11 @@ export async function GET(req: NextRequest) {
 
   try {
     const res = await fetch(
-      `https://www.instagram.com/web/search/topsearch/?query=${encodeURIComponent(q)}&context=blended`,
+      `https://instagram-scraper-api2.p.rapidapi.com/v1/search_users?search_query=${encodeURIComponent(q)}`,
       {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 16_0 like Mac OS X) AppleWebKit/605.1.15',
-          'Accept': 'application/json',
-          'Accept-Language': 'en-US,en;q=0.9',
-          'X-IG-App-ID': '936619743392459',
-          'Referer': 'https://www.instagram.com/',
+          'x-rapidapi-host': 'instagram-scraper-api2.p.rapidapi.com',
+          'x-rapidapi-key': process.env.RAPIDAPI_KEY || '',
         },
         next: { revalidate: 60 },
       }
@@ -22,24 +19,24 @@ export async function GET(req: NextRequest) {
     if (!res.ok) return NextResponse.json({ users: [] })
 
     const data = await res.json()
-    const users = (data.users || []).slice(0, 6).map((u: {
-      user: {
-        username: string
-        full_name: string
-        profile_pic_url: string
-        follower_count: number
-        is_verified: boolean
-        biography?: string
-        category?: string
-      }
+    const items = data?.data?.items || []
+
+    const users = items.slice(0, 6).map((u: {
+      username: string
+      full_name: string
+      profile_pic_url: string
+      follower_count: number
+      is_verified: boolean
+      biography?: string
+      category?: string
     }) => ({
-      username: u.user.username,
-      full_name: u.user.full_name,
-      profile_pic_url: u.user.profile_pic_url,
-      follower_count: u.user.follower_count,
-      is_verified: u.user.is_verified,
-      biography: u.user.biography || '',
-      category: u.user.category || '',
+      username: u.username,
+      full_name: u.full_name,
+      profile_pic_url: u.profile_pic_url,
+      follower_count: u.follower_count,
+      is_verified: u.is_verified,
+      biography: u.biography || '',
+      category: u.category || '',
     }))
 
     return NextResponse.json({ users })
