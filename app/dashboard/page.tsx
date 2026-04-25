@@ -10,7 +10,7 @@ interface ViralPattern { topic:string; format:string; trigger:string; hook:strin
 interface AuditResult { profile_strategy:string; content_mix:{reel:number;carousel:number;longform:number;reasoning:string}; posting_frequency:string; whats_working:string[]; whats_missing:string[]; top_improvements:{action:string;impact:string;reason:string}[]; hook_formula:string; growth_levers:string[]; overall_score:number; summary:string }
 
 // ─── Constants ──────────────────────────────────────────────────────────────
-const FE: Record<string,string> = { aReel:'🎬', Carousel:'🖼️', 'Long-form':'📹' }
+const FE: Record<string,string> = { Reel:'🎬', Carousel:'🖼️', 'Long-form':'📹' }
 const FS: Record<string,string> = { Reel:'format-reel', Carousel:'format-carousel', 'Long-form':'format-longform' }
 const PS = ['pillar-0','pillar-1','pillar-2','pillar-3']
 const PC = ['#3b82f6','#10b981','#f59e0b','#e94560']
@@ -81,7 +81,6 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
   const [prog,setProg]=useState('')
   const [err,setErr]=useState('')
   const n=Math.max(Math.floor(dur/7)*3,3)
-  const [quickMode, setQuickMode] = useState(true)
 
   async function getSuggestions(){
     if(!apiKey)return setErr('Add API key in ⚙️ Settings first')
@@ -101,7 +100,7 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
     let i=0;const iv=setInterval(()=>setProg(steps[Math.min(i++,4)]),2000)
     try{
       // Always generate quick basic plan — scripts load on demand per post
-      const plan=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode,apiKey})})
+      const plan=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'generate',channelName:channel.name,objective:obj,audience:aud,keyword:kw||'',duration:dur,quickMode:true,apiKey})})
       if(plan.error)throw new Error(plan.error as string)
       const saved=await af('/api/posts',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({plan:{channel_id:channel.id,keyword:kw||channel.niche,duration:dur},posts:plan.posts,channelId:channel.id,strategy:plan.strategy||'',hook_formula:plan.hook_formula||''})})
       onDone(saved.posts,{strategy:plan.strategy||'',hook_formula:plan.hook_formula||'',pillars:(plan.pillars||[]).join(', ')})
@@ -154,15 +153,6 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
           </div>
 
           {/* Info */}
-          <div style={{display:'flex',alignItems:'center',gap:10,padding:'10px 14px',background:'var(--bg-elevated)',borderRadius:10,border:'1px solid var(--border)'}}>
-  <div style={{flex:1}}>
-    <div style={{fontSize:13,fontWeight:500}}>{quickMode ? '⚡ Quick Mode' : '🧠 Full Mode'}</div>
-    <div style={{fontSize:11,color:'var(--text-muted)',marginTop:2}}>{quickMode ? 'Haiku — fast & cheap, great for most plans' : 'Opus — slower, richer hooks & strategy'}</div>
-  </div>
-  <button onClick={()=>setQuickMode(q=>!q)} style={{padding:'5px 14px',borderRadius:20,fontSize:12,fontWeight:600,border:'1px solid var(--border)',background:quickMode?'rgba(233,69,96,0.15)':'rgba(59,130,246,0.15)',color:quickMode?'var(--accent)':'#3b82f6',cursor:'pointer'}}>
-    {quickMode ? 'Quick' : 'Full'}
-  </button>
-</div>
           <div style={{background:'var(--bg-elevated)',borderRadius:10,padding:'10px 14px',fontSize:12,color:'var(--text-secondary)',border:'1px solid var(--border)',lineHeight:1.6}}>
             <div>⚡ <strong>Generates instantly</strong> — {n} posts with titles, hooks, hashtags, and targets</div>
             <div style={{marginTop:4,color:'var(--text-muted)'}}>📝 Scripts and AI image prompts load on demand per post after generating</div>
@@ -582,13 +572,7 @@ const TABS:{ key:Tab; label:string }[]=[
   {key:'pillars',label:'🔍 Pillars'},{key:'strategy',label:'🎯 Strategy'},
   {key:'viral',label:'🔥 Viral'},{key:'audit',label:'📋 Audit'},
 ]
-function getCookie(name:string){
-  const m=document.cookie.match('(^|;)\\s*'+name+'\\s*=\\s*([^;]+)')
-  return m?decodeURIComponent(m[2]):null
-}
-function setCookie(name:string,value:string){
-  document.cookie=`${name}=${encodeURIComponent(value)};path=/;max-age=31536000`
-}
+
 export default function Dashboard(){
   const [channels,setChannels]=useState<Channel[]>([])
   const [active,setActive]=useState<Channel|null>(null)
@@ -614,61 +598,40 @@ export default function Dashboard(){
   const [showSet,setShowSet]=useState(false)
   const [genTopic,setGenTopic]=useState('')
 
-  // AFTER
-useEffect(()=>{
-  setApiKey(getCookie('anthropic_api_key')||'')
-  loadChannels()
-},[])
+  useEffect(()=>{setApiKey(localStorage.getItem('anthropic_api_key')||'');loadChannels()},[])
 
-  const loadPosts = useCallback(async (cid: string) => {
-  setPostsLoading(true)
-  try {
-    const d = await af(`/api/posts?channelId=${cid}`)
-    // d is now { posts: [...], meta: {...} }
-    const p: Post[] = Array.isArray(d) ? d : (d.posts ?? [])
-    setPosts(p)
-    setPillars([...new Set(p.map((x: Post) => x.pillar))].filter(Boolean))
-    if (d.meta) setMeta(d.meta)  // ← restores strategy+hook on refresh
-  } catch (e) { console.error('loadPosts', e) }
-  finally { setLoading(false); setPostsLoading(false) }
-}, [])
+  const loadPosts=useCallback(async(cid:string)=>{
+    setPostsLoading(true)
+    try{const d=await af(`/api/posts?channelId=${cid}`);const p:Post[]=Array.isArray(d)?d:[];setPosts(p);setPillars([...new Set(p.map(x=>x.pillar))].filter(Boolean))}
+    catch(e){console.error('loadPosts',e)}
+    finally{setLoading(false);setPostsLoading(false)}
+  },[])
 
   async function loadChannels(){
     setLoading(true)
     try{
       const d=await af('/api/channels');const chs:Channel[]=Array.isArray(d)?d:[];setChannels(chs)
-      if(chs.length>0){const sid=getCookie('active_channel_id');const ta=chs.find(c=>c.id===sid)||chs[0];setActive(ta);await loadPosts(ta.id)}
+      if(chs.length>0){const sid=localStorage.getItem('active_channel_id');const ta=chs.find(c=>c.id===sid)||chs[0];setActive(ta);await loadPosts(ta.id)}
       else setLoading(false)
     }catch(e){console.error('loadChannels',e);setLoading(false)}
   }
 
- function switchChannel(ch:Channel){
-  setActive(ch);setPosts([]);setPillars([]);setMeta({});
-  setViralP([]);setViralI('');setViralE('');
-  setAudit(null);setAuditE('');
-  setCookie('active_channel_id',ch.id);
-  loadPosts(ch.id)  // ← ADD THIS LINE
-}
-async function onChannelAdded(ch:Channel){setShowAdd(false);await loadChannels();switchChannel(ch)}  function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
-// AFTER
-function saveKey(k:string){setApiKey(k);setCookie('anthropic_api_key',k)}
-async function deleteChannel(id:string){
-  try{
+  function switchChannel(ch:Channel){setActive(ch);setPosts([]);setPillars([]);setMeta({});localStorage.setItem('active_channel_id',ch.id);loadPosts(ch.id)}
+  async function deleteChannel(id:string){
+    if(!confirm('Remove this channel?'))return
     await af('/api/channels',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
-    const remaining=channels.filter(c=>c.id!==id)
-    setChannels(remaining)
-    if(active?.id===id){
-      if(remaining.length>0){switchChannel(remaining[0])}
-      else{setActive(null);setPosts([]);setPillars([]);setMeta({})}
-    }
-  }catch(e){console.error('deleteChannel',e)}
-}
+    const u=channels.filter(c=>c.id!==id);setChannels(u)
+    if(active?.id===id){localStorage.removeItem('active_channel_id');u.length>0?switchChannel(u[0]):(setActive(null),setPosts([]),setPillars([]))}
+  }
+  function onChannelAdded(ch:Channel){setChannels(p=>[...p,ch]);setShowAdd(false);switchChannel(ch)}
+  function onGenerated(np:Post[],nm:Record<string,string>){setPosts(np);setMeta(nm);setPillars([...new Set(np.map(x=>x.pillar))].filter(Boolean));setShowGen(false);setGenTopic('');setTab('calendar')}
+  function saveKey(k:string){setApiKey(k);localStorage.setItem('anthropic_api_key',k)}
   function useViralTopic(t:string){setGenTopic(t);setShowGen(true)}
 
   async function findViral(){
     if(!active||!apiKey)return setViralE(!apiKey?'Add API key in ⚙️ Settings':'No channel selected')
     setViralL(true);setViralE('')
-    try{const d=await af('/api/viral',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'viral',niche:active.niche,handle:active.handle,objective:active.objective,audience:active.audience,apiKey})});if(d.error)throw new Error(d.error);setViralP(d.viral_patterns||[]);setViralI(d.insight||'')}
+    try{const d=await af('/api/generate',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action:'viral',niche:active.niche,handle:active.handle,objective:active.objective,audience:active.audience,apiKey})});if(d.error)throw new Error(d.error);setViralP(d.viral_patterns||[]);setViralI(d.insight||'')}
     catch(e:unknown){setViralE(e instanceof Error?e.message:'Failed')}
     finally{setViralL(false)}
   }
@@ -684,7 +647,7 @@ async function deleteChannel(id:string){
   return(
     <div style={{display:'flex',flexDirection:'column',minHeight:'100vh'}}>
       <nav style={{background:'var(--bg-surface)',borderBottom:'1px solid var(--border)',padding:'0 18px',height:56,display:'flex',alignItems:'center',gap:12,position:'sticky',top:0,zIndex:30}}>
-        <div style={{fontSize:16,fontWeight:700,whiteSpace:'nowrap'}}><span style={{color:'var(--accent)'}}>Content</span>Dash</div>
+        <div style={{fontSize:16,fontWeight:700,whiteSpace:'nowrap'}}><span style={{color:'var(--accent)'}}>Post</span>lab</div>
         <AccountSwitcher channels={channels} active={active} onSwitch={switchChannel} onAddManual={()=>setShowAdd(true)} onDelete={deleteChannel}/>
         <div style={{flex:1}}/>
         <div style={{display:'flex',gap:2,overflowX:'auto'}}>
@@ -712,7 +675,7 @@ async function deleteChannel(id:string){
         {loading?<div style={{display:'grid',gap:12}}>{[140,110,110].map((h,i)=><Sh key={i} h={h}/>)}</div>
         :!active?<div style={{textAlign:'center',padding:'100px 20px'}}>
           <div style={{fontSize:52,marginBottom:14}}>📱</div>
-          <div style={{fontSize:22,fontWeight:600,marginBottom:7}}>Welcome to ContentDash</div>
+          <div style={{fontSize:22,fontWeight:600,marginBottom:7}}>Welcome to Postlab</div>
           <div style={{fontSize:14,color:'var(--text-secondary)',marginBottom:30}}>Add your first channel to start</div>
           <div style={{display:'flex',gap:12,justifyContent:'center',flexWrap:'wrap'}}>
             <button className="btn-ig" onClick={()=>window.location.href='/login'} style={{padding:'12px 24px',fontSize:14}}>📷 Connect Instagram</button>
