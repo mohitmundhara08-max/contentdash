@@ -1,179 +1,123 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { supabase } from '@/lib/supabase'
 
+export const dynamic = 'force-dynamic'
+
 export async function GET(req: NextRequest) {
   try {
-    const { searchParams } = new URL(req.url)
-    const channelId = searchParams.get('channelId')
+    const channelId = new URL(req.url).searchParams.get('channelId')
+    if (!channelId) return NextResponse.json({ error: 'channelId required' }, { status: 400 })
 
-    if (!channelId) {
-      return NextResponse.json({ error: 'channelId required' }, { status: 400 })
-    }
-
-    // Fetch posts
-    const { data: posts, error: postsError } = await supabase
+    const { data: posts, error } = await supabase
       .from('ig_posts')
       .select('*')
       .eq('channel_id', channelId)
-      .order('week', { ascending: true })
       .order('day', { ascending: true })
 
-    if (postsError) {
-      return NextResponse.json({ error: postsError.message }, { status: 500 })
-    }
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    // Fetch latest plan meta so strategy + hook_formula survive a page refresh
-    const { data: planData } = await supabase
+    const { data: plan } = await supabase
       .from('ig_content_plans')
       .select('strategy, hook_formula')
       .eq('channel_id', channelId)
       .order('created_at', { ascending: false })
       .limit(1)
-      .maybeSingle()
+      .single()
 
     return NextResponse.json({
-      posts: posts ?? [],
-      meta: planData
-        ? { strategy: planData.strategy ?? '', hook_formula: planData.hook_formula ?? '' }
-        : {},
+      posts: posts || [],
+      meta: { strategy: plan?.strategy || '', hook_formula: plan?.hook_formula || '' }
     })
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Something went wrong' },
-      { status: 500 },
-    )
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
   }
 }
 
 export async function POST(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { plan, posts, channelId, strategy, hook_formula } = body
-
-    // Delete old posts + plans for this channel before inserting new ones
-    const { error: postsDeleteError } = await supabase
-      .from('ig_posts')
-      .delete()
-      .eq('channel_id', channelId)
-
-    if (postsDeleteError) {
-      return NextResponse.json({ error: postsDeleteError.message }, { status: 500 })
+    const body = await req.json() as {
+      channelId: string
+      plan: { channel_id: string; keyword: string; duration: number }
+      posts: Record<string, unknown>[]
+      strategy?: string
+      hook_formula?: string
     }
 
-    const { error: plansDeleteError } = await supabase
-      .from('ig_content_plans')
-      .delete()
-      .eq('channel_id', channelId)
+    const { channelId, plan, posts, strategy = '', hook_formula = '' } = body
+    if (!channelId || !posts?.length) return NextResponse.json({ error: 'channelId and posts required' }, { status: 400 })
 
-    if (plansDeleteError) {
-      return NextResponse.json({ error: plansDeleteError.message }, { status: 500 })
-    }
+    await supabase.from('ig_posts').delete().eq('channel_id', channelId)
+    await supabase.from('ig_content_plans').delete().eq('channel_id', channelId)
 
-    // 1) Insert new content plan
-    const { data: savedPlan, error: planError } = await supabase
+    const { data: newPlan, error: planError } = await supabase
       .from('ig_content_plans')
-      .insert({
-        channel_id: channelId,
-        keyword: plan.keyword,
-        duration: plan.duration,
-        strategy,
-        hook_formula,
-      })
-      .select()
+      .insert({ channel_id: channelId, keyword: plan?.keyword || '', duration: plan?.duration || 30, strategy, hook_formula })
+      .select('id')
       .single()
 
-    if (planError) {
-      return NextResponse.json({ error: planError.message }, { status: 500 })
-    }
+    if (planError || !newPlan) return NextResponse.json({ error: planError?.message || 'Failed to create plan' }, { status: 500 })
 
-    // 2) Insert posts with explicit column mapping — never spread raw AI output
-    const rows = (posts || []).map((post: {
-      day?: number
-      week?: number
-      format?: string
-      pillar?: string
-      title?: string
-      hook?: string
-      content_brief?: string
-      script?: string
-      ai_prompt?: string
-      hashtags?: string
-      cta?: string
-      post_date?: string
-      reach_target?: number
-      saves_target?: number
-      shares_target?: number
-      comments_target?: number
-      plays_target?: number
-      priority?: number
-      notes?: string
-    }) => ({
-      plan_id: savedPlan.id,
-      channel_id: channelId,
-      day: post.day ?? 1,
-      week: post.week ?? 1,
-      format: post.format ?? 'Reel',
-      pillar: post.pillar ?? '',
-      title: post.title ?? '',
-      hook: post.hook ?? '',
-      content_brief: post.content_brief ?? '',
-      script: post.script ?? '',
-      ai_prompt: post.ai_prompt ?? '',
-      hashtags: post.hashtags ?? '',
-      cta: post.cta ?? '',
-      post_date: post.post_date ?? '',
-      reach_target: post.reach_target ?? 0,
-      saves_target: post.saves_target ?? 0,
-      shares_target: post.shares_target ?? 0,
-      comments_target: post.comments_target ?? 0,
-      plays_target: post.plays_target ?? 0,
-      priority: post.priority ?? 3,
-      notes: post.notes ?? '',
+    const toInsert = posts.map((p) => ({
+      plan_id:         newPlan.id,
+      channel_id:      channelId,
+      day:             Number(p.day)             || 1,
+      week:            Number(p.week)            || 1,
+      format:          String(p.format           || 'Reel'),
+      pillar:          String(p.pillar           || ''),
+      title:           String(p.title            || ''),
+      hook:            String(p.hook             || ''),
+      content_brief:   String(p.content_brief    || ''),
+      script:          String(p.script           || ''),
+      ai_prompt:       String(p.ai_prompt        || ''),
+      hashtags:        String(p.hashtags         || ''),
+      cta:             String(p.cta              || ''),
+      post_date:       String(p.post_date        || ''),
+      reach_target:    Number(p.reach_target)    || 0,
+      saves_target:    Number(p.saves_target)    || 0,
+      shares_target:   Number(p.shares_target)   || 0,
+      comments_target: Number(p.comments_target) || 0,
+      plays_target:    Number(p.plays_target)    || 0,
+      priority:        Number(p.priority)        || 3,
+      notes:           String(p.notes            || ''),
     }))
 
     const { data: savedPosts, error: postsError } = await supabase
-      .from('ig_posts')
-      .insert(rows)
-      .select()
+      .from('ig_posts').insert(toInsert).select('*')
 
-    if (postsError) {
-      return NextResponse.json({ error: postsError.message }, { status: 500 })
-    }
+    if (postsError) return NextResponse.json({ error: postsError.message }, { status: 500 })
 
-    return NextResponse.json({ posts: savedPosts })
-  } catch (error) {
-    return NextResponse.json(
-      { error: error instanceof Error ? error.message : 'Something went wrong' },
-      { status: 500 },
-    )
+    return NextResponse.json({ posts: savedPosts || [], meta: { strategy, hook_formula } })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
   }
 }
 
 export async function PATCH(req: NextRequest) {
   try {
-    const body = await req.json()
-    const { postId, content_brief, script, ai_prompt, cta, notes } = body
+    const body = await req.json() as { id: string; script?: string; ai_prompt?: string }
+    if (!body.id) return NextResponse.json({ error: 'Post ID required' }, { status: 400 })
 
-    if (!postId) {
-      return NextResponse.json({ error: 'postId required' }, { status: 400 })
-    }
+    const update: Record<string, string> = {}
+    if (body.script    !== undefined) update.script    = body.script
+    if (body.ai_prompt !== undefined) update.ai_prompt = body.ai_prompt
 
-    const { data, error } = await supabase
-      .from('ig_posts')
-      .update({ content_brief, script, ai_prompt, cta, notes })
-      .eq('id', postId)
-      .select()
-      .single()
+    const { error } = await supabase.from('ig_posts').update(update).eq('id', body.id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 })
-    }
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
+  }
+}
 
-    return NextResponse.json(data)
-  } catch (err) {
-    return NextResponse.json(
-      { error: err instanceof Error ? err.message : 'Something went wrong' },
-      { status: 500 },
-    )
+export async function DELETE(req: NextRequest) {
+  try {
+    const { id } = await req.json() as { id: string }
+    if (!id) return NextResponse.json({ error: 'ID required' }, { status: 400 })
+    const { error } = await supabase.from('ig_posts').delete().eq('id', id)
+    if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+    return NextResponse.json({ success: true })
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Error' }, { status: 500 })
   }
 }
