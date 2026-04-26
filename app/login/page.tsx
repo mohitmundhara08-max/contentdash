@@ -14,7 +14,7 @@ export default function LoginPage() {
     <div style={{ minHeight:'100vh', display:'flex', alignItems:'center', justifyContent:'center', background:'var(--bg-base)', padding:20 }}>
       <div style={{ width:'100%', maxWidth:420, textAlign:'center' }}>
         <div style={{ fontSize:32, fontWeight:700, marginBottom:8 }}>
-          <span style={{ color:'var(--accent)' }}>Content</span>Dash
+          <span style={{ color:'var(--accent)' }}>Post</span>lab
         </div>
         <div style={{ fontSize:14, color:'var(--text-secondary)', marginBottom:48 }}>AI-powered Instagram content studio</div>
 
