@@ -617,9 +617,8 @@ export default function Dashboard(){
   }
 
   function switchChannel(ch:Channel){setActive(ch);setPosts([]);setPillars([]);setMeta({});localStorage.setItem('active_channel_id',ch.id);loadPosts(ch.id)}
-  async function deleteChannel(id:string){
-    if(!confirm('Remove this channel?'))return
-    await af('/api/channels',{method:'DELETE',headers:{'Content-Type':'application/json'},body:JSON.stringify({id})})
+  function deleteChannel(id:string){
+    if(!confirm('Remove this channel from your view? (Data stays saved in the system)'))return
     const u=channels.filter(c=>c.id!==id);setChannels(u)
     if(active?.id===id){localStorage.removeItem('active_channel_id');u.length>0?switchChannel(u[0]):(setActive(null),setPosts([]),setPillars([]))}
   }
