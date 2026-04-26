@@ -57,10 +57,7 @@ function AccountSwitcher({channels,active,onSwitch,onAddManual,onDelete}:{channe
           </div>
         ))}
         <div style={{height:1,background:'var(--border)',margin:'4px 0'}}/>
-        <button onClick={()=>{window.location.href='/login';setOpen(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',background:'transparent',border:'none',borderRadius:8,cursor:'pointer',fontSize:13}}>
-          <span style={{background:'linear-gradient(135deg,#833ab4,#fd1d1d,#fcb045)',WebkitBackgroundClip:'text',WebkitTextFillColor:'transparent',fontWeight:600}}>📷 Connect Instagram account</span>
-        </button>
-        <button onClick={()=>{onAddManual();setOpen(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',background:'transparent',border:'none',borderRadius:8,cursor:'pointer',fontSize:13,color:'var(--text-secondary)'}}>+ Add channel manually</button>
+        <button onClick={()=>{onAddManual();setOpen(false)}} style={{display:'flex',alignItems:'center',gap:8,width:'100%',padding:'8px 10px',background:'transparent',border:'none',borderRadius:8,cursor:'pointer',fontSize:13,color:'var(--text-secondary)'}}>+ Add channel</button>
       </div>}
     </div>
   )
@@ -250,7 +247,7 @@ function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)
                     }
                     <div>
                       <div style={{fontSize:14,fontWeight:600}}>{found.name}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)'}}>@{handle.replace('@','')} · {found.followers.toLocaleString()} followers</div>
+                      <div style={{fontSize:12,color:'var(--text-muted)'}}>@{handle.replace('@','')} {found.followers?`· ${found.followers.toLocaleString()} followers`:''}</div>
                       {found.bio&&<div style={{fontSize:11,color:'var(--text-secondary)',marginTop:2}}>{found.bio.slice(0,80)}</div>}
                     </div>
                   </div>
