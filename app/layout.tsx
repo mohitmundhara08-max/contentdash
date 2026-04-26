@@ -2,7 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 
 export const metadata: Metadata = {
-  title: 'ContentDash — Instagram Content Studio',
+  title: 'Postlab — Instagram Content Studio',
   description: 'AI-powered content planning for multiple Instagram channels',
 }
 
