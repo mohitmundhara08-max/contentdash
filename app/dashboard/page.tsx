@@ -176,7 +176,7 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
 function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)=>void}){
   const [handle,setHandle]=useState('')
   const [searching,setSearching]=useState(false)
-  const [found,setFound]=useState<{name:string;followers:number;bio:string;picture:string}|null>(null)
+  const [found,setFound]=useState<{name:string;followers:number|null;following:number|null;posts:number|null;bio:string;picture:string;verified:boolean;category:string}|null>(null)
   const [f,setF]=useState({name:'',handle:'',objective:'',audience:'',niche:'',color:COLORS[0]})
   const [loading,setLoading]=useState(false)
   const [err,setErr]=useState('')
@@ -242,13 +242,21 @@ function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)
                 <div style={{background:'var(--bg-elevated)',borderRadius:12,padding:14,border:'1px solid var(--border)'}}>
                   <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:12}}>
                     {found.picture
-                      ?<img src={found.picture} alt="" style={{width:48,height:48,borderRadius:'50%',objectFit:'cover'}}/>
-                      :<div style={{width:48,height:48,borderRadius:'50%',background:f.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,color:'white'}}>{found.name[0]}</div>
+                      ?<img src={found.picture} alt="" style={{width:52,height:52,borderRadius:'50%',objectFit:'cover',border:'2px solid var(--border)'}}/>
+                      :<div style={{width:52,height:52,borderRadius:'50%',background:f.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:20,fontWeight:700,color:'white',flexShrink:0}}>{found.name[0]}</div>
                     }
-                    <div>
-                      <div style={{fontSize:14,fontWeight:600}}>{found.name}</div>
-                      <div style={{fontSize:12,color:'var(--text-muted)'}}>@{handle.replace('@','')} {found.followers?`· ${found.followers.toLocaleString()} followers`:''}</div>
-                      {found.bio&&<div style={{fontSize:11,color:'var(--text-secondary)',marginTop:2}}>{found.bio.slice(0,80)}</div>}
+                    <div style={{flex:1}}>
+                      <div style={{fontSize:14,fontWeight:600,display:'flex',alignItems:'center',gap:6}}>
+                        {found.name}
+                        {found.verified&&<span style={{fontSize:13,color:'#3b82f6'}}>✓</span>}
+                      </div>
+                      <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:4}}>@{handle.replace('@','')}{found.category?` · ${found.category}`:''}</div>
+                      <div style={{display:'flex',gap:14,fontSize:12}}>
+                        {found.followers!=null&&<span><strong style={{color:'var(--text-primary)'}}>{found.followers.toLocaleString()}</strong> <span style={{color:'var(--text-muted)'}}>followers</span></span>}
+                        {found.following!=null&&<span><strong style={{color:'var(--text-primary)'}}>{found.following.toLocaleString()}</strong> <span style={{color:'var(--text-muted)'}}>following</span></span>}
+                        {found.posts!=null&&<span><strong style={{color:'var(--text-primary)'}}>{found.posts.toLocaleString()}</strong> <span style={{color:'var(--text-muted)'}}>posts</span></span>}
+                      </div>
+                      {found.bio&&<div style={{fontSize:11,color:'var(--text-secondary)',marginTop:4,lineHeight:1.4}}>{found.bio.slice(0,100)}</div>}
                     </div>
                   </div>
                   <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>Fill in objective and audience to complete setup:</div>
