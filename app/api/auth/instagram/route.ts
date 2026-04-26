@@ -13,8 +13,9 @@ export async function GET() {
 
   const state = Math.random().toString(36).slice(2)
 
-  // Only valid Facebook Login scopes — instagram_business_* are NOT valid here
-  const scopes = 'pages_show_list,instagram_basic,pages_read_engagement'
+  // Valid scopes for Facebook Login for Business apps
+  // instagram_basic is NOT valid for Business apps — it's for personal/Basic Display API only
+  const scopes = 'pages_show_list,pages_read_engagement,business_management'
 
   const url = `https://www.facebook.com/v18.0/dialog/oauth?` +
     `client_id=${fbAppId}` +
