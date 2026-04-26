@@ -9,106 +9,59 @@ export async function GET(req: NextRequest) {
   const rapidKey = process.env.RAPIDAPI_KEY
   if (!rapidKey) return NextResponse.json({ error: 'RAPIDAPI_KEY not set in Vercel env vars' }, { status: 500 })
 
-  // Try multiple RapidAPI Instagram endpoints in order until one works
-  const endpoints = [
-    {
-      url: `https://instagram-scraper-api2.p.rapidapi.com/v1/info?username_or_id_or_url=${handle}`,
-      host: 'instagram-scraper-api2.p.rapidapi.com',
-      parse: (d: Record<string,unknown>) => {
-        const u = (d.data as Record<string,unknown>) || d
-        return {
-          name:      String(u.full_name || u.username || handle),
-          followers: Number(u.follower_count || u.followers || 0),
-          following: Number(u.following_count || u.following || 0),
-          posts:     Number(u.media_count || u.posts || 0),
-          bio:       String(u.biography || u.bio || ''),
-          picture:   String(u.profile_pic_url_hd || u.profile_pic_url || u.picture || ''),
-          verified:  Boolean(u.is_verified || u.verified || false),
-          category:  String(u.category || u.business_category_name || ''),
-        }
-      }
-    },
-    {
-      url: `https://instagram-scraper-20251.p.rapidapi.com/user/info/?username=${handle}`,
-      host: 'instagram-scraper-20251.p.rapidapi.com',
-      parse: (d: Record<string,unknown>) => {
-        const u = (d.user as Record<string,unknown>) || d
-        return {
-          name:      String(u.full_name || handle),
-          followers: Number((u.edge_followed_by as Record<string,unknown>)?.count || u.follower_count || 0),
-          following: Number((u.edge_follow as Record<string,unknown>)?.count || u.following_count || 0),
-          posts:     Number((u.edge_owner_to_timeline_media as Record<string,unknown>)?.count || u.media_count || 0),
-          bio:       String(u.biography || ''),
-          picture:   String(u.profile_pic_url_hd || u.profile_pic_url || ''),
-          verified:  Boolean(u.is_verified || false),
-          category:  String(u.business_category_name || ''),
-        }
-      }
-    },
-    {
-      url: `https://instagram-data1.p.rapidapi.com/user/info?username=${handle}`,
-      host: 'instagram-data1.p.rapidapi.com',
-      parse: (d: Record<string,unknown>) => ({
-        name:      String(d.full_name || handle),
-        followers: Number(d.followers || 0),
-        following: Number(d.following || 0),
-        posts:     Number(d.posts || 0),
-        bio:       String(d.bio || ''),
-        picture:   String(d.profile_pic || ''),
-        verified:  Boolean(d.verified || false),
-        category:  '',
-      })
-    },
-  ]
-
-  let lastError = 'All Instagram data sources failed'
-
-  for (const ep of endpoints) {
-    try {
-      const res = await fetch(ep.url, {
+  try {
+    // Instagram Scraper Stable API - "Basic User + Posts" endpoint
+    const res = await fetch(
+      `https://instagram-scraper-stable-api.p.rapidapi.com/get_ig_user_info.php?username_or_url=${encodeURIComponent(handle)}`,
+      {
+        method: 'GET',
         headers: {
-          'x-rapidapi-key': rapidKey,
-          'x-rapidapi-host': ep.host,
+          'x-rapidapi-key':  rapidKey,
+          'x-rapidapi-host': 'instagram-scraper-stable-api.p.rapidapi.com',
         },
-      })
-
-      if (!res.ok) {
-        lastError = `${ep.host}: HTTP ${res.status}`
-        continue
       }
+    )
 
-      const raw = await res.json() as Record<string,unknown>
-
-      // Check for API-level errors
-      if (raw.error || raw.message?.toString().includes('not found') || raw.status === 'fail') {
-        lastError = String(raw.error || raw.message || 'Not found')
-        continue
-      }
-
-      const parsed = ep.parse(raw)
-
-      // Validate we got real data
-      if (!parsed.name || parsed.name === 'undefined') {
-        lastError = 'No profile data returned'
-        continue
-      }
-
-      return NextResponse.json({
-        handle:    `@${handle}`,
-        name:      parsed.name,
-        followers: parsed.followers || null,
-        following: parsed.following || null,
-        posts:     parsed.posts || null,
-        bio:       parsed.bio,
-        picture:   parsed.picture,
-        verified:  parsed.verified,
-        category:  parsed.category,
-      })
-
-    } catch (e) {
-      lastError = e instanceof Error ? e.message : 'Request failed'
+    if (!res.ok) {
+      return NextResponse.json({ error: `API error ${res.status} — check your RapidAPI subscription` }, { status: res.status })
     }
-  }
 
-  return NextResponse.json({ error: `Could not fetch profile: ${lastError}` }, { status: 404 })
+    const raw = await res.json() as Record<string, unknown>
+
+    // Handle API-level errors
+    if (raw.error || raw.status === 'fail' || raw.detail) {
+      return NextResponse.json({ error: String(raw.error || raw.detail || 'Profile not found') }, { status: 404 })
+    }
+
+    // The API returns nested user object
+    const u = (raw.user || raw.data || raw) as Record<string, unknown>
+
+    const followers = Number(
+      u.follower_count || u.followers ||
+      (u.edge_followed_by as Record<string,unknown>)?.count || 0
+    )
+    const following = Number(
+      u.following_count || u.following ||
+      (u.edge_follow as Record<string,unknown>)?.count || 0
+    )
+    const posts = Number(
+      u.media_count || u.posts ||
+      (u.edge_owner_to_timeline_media as Record<string,unknown>)?.count || 0
+    )
+
+    return NextResponse.json({
+      handle:    `@${handle}`,
+      name:      String(u.full_name || u.name || handle),
+      followers: followers || null,
+      following: following || null,
+      posts:     posts || null,
+      bio:       String(u.biography || u.bio || ''),
+      picture:   String(u.profile_pic_url_hd || u.profile_pic_url || u.picture || ''),
+      verified:  Boolean(u.is_verified || u.verified || false),
+      category:  String(u.category || u.business_category_name || ''),
+    })
+
+  } catch (e: unknown) {
+    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
+  }
 }
