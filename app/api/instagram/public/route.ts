@@ -6,84 +6,109 @@ export async function GET(req: NextRequest) {
   const handle = new URL(req.url).searchParams.get('handle')?.replace('@','').trim()
   if (!handle) return NextResponse.json({ error: 'Handle required' }, { status: 400 })
 
-  try {
-    // Try fetching with a browser-like user agent
-    const res = await fetch(`https://www.instagram.com/${handle}/`, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
-        'Accept-Language': 'en-US,en;q=0.9',
-        'Accept-Encoding': 'gzip, deflate, br',
-        'Connection': 'keep-alive',
-        'Upgrade-Insecure-Requests': '1',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'none',
-        'Cache-Control': 'max-age=0',
-      },
-    })
+  const rapidKey = process.env.RAPIDAPI_KEY
+  if (!rapidKey) return NextResponse.json({ error: 'RAPIDAPI_KEY not set in Vercel env vars' }, { status: 500 })
 
-    if (res.status === 404) return NextResponse.json({ error: 'Account not found. Check the username.' }, { status: 404 })
-    if (!res.ok) return NextResponse.json({ error: 'Could not reach Instagram' }, { status: 400 })
+  // Try multiple RapidAPI Instagram endpoints in order until one works
+  const endpoints = [
+    {
+      url: `https://instagram-scraper-api2.p.rapidapi.com/v1/info?username_or_id_or_url=${handle}`,
+      host: 'instagram-scraper-api2.p.rapidapi.com',
+      parse: (d: Record<string,unknown>) => {
+        const u = (d.data as Record<string,unknown>) || d
+        return {
+          name:      String(u.full_name || u.username || handle),
+          followers: Number(u.follower_count || u.followers || 0),
+          following: Number(u.following_count || u.following || 0),
+          posts:     Number(u.media_count || u.posts || 0),
+          bio:       String(u.biography || u.bio || ''),
+          picture:   String(u.profile_pic_url_hd || u.profile_pic_url || u.picture || ''),
+          verified:  Boolean(u.is_verified || u.verified || false),
+          category:  String(u.category || u.business_category_name || ''),
+        }
+      }
+    },
+    {
+      url: `https://instagram-scraper-20251.p.rapidapi.com/user/info/?username=${handle}`,
+      host: 'instagram-scraper-20251.p.rapidapi.com',
+      parse: (d: Record<string,unknown>) => {
+        const u = (d.user as Record<string,unknown>) || d
+        return {
+          name:      String(u.full_name || handle),
+          followers: Number((u.edge_followed_by as Record<string,unknown>)?.count || u.follower_count || 0),
+          following: Number((u.edge_follow as Record<string,unknown>)?.count || u.following_count || 0),
+          posts:     Number((u.edge_owner_to_timeline_media as Record<string,unknown>)?.count || u.media_count || 0),
+          bio:       String(u.biography || ''),
+          picture:   String(u.profile_pic_url_hd || u.profile_pic_url || ''),
+          verified:  Boolean(u.is_verified || false),
+          category:  String(u.business_category_name || ''),
+        }
+      }
+    },
+    {
+      url: `https://instagram-data1.p.rapidapi.com/user/info?username=${handle}`,
+      host: 'instagram-data1.p.rapidapi.com',
+      parse: (d: Record<string,unknown>) => ({
+        name:      String(d.full_name || handle),
+        followers: Number(d.followers || 0),
+        following: Number(d.following || 0),
+        posts:     Number(d.posts || 0),
+        bio:       String(d.bio || ''),
+        picture:   String(d.profile_pic || ''),
+        verified:  Boolean(d.verified || false),
+        category:  '',
+      })
+    },
+  ]
 
-    const html = await res.text()
+  let lastError = 'All Instagram data sources failed'
 
-    // Extract name from og:title — format: "Name (@handle) • Instagram photos and videos"
-    const titleMatch = html.match(/<meta property="og:title" content="([^"]+)"/)
-    const rawTitle   = titleMatch?.[1] || ''
-    const name       = rawTitle.split('(')[0].trim() || handle
+  for (const ep of endpoints) {
+    try {
+      const res = await fetch(ep.url, {
+        headers: {
+          'x-rapidapi-key': rapidKey,
+          'x-rapidapi-host': ep.host,
+        },
+      })
 
-    // Extract image
-    const imageMatch = html.match(/<meta property="og:image" content="([^"]+)"/)
-    const picture    = imageMatch?.[1] || ''
+      if (!res.ok) {
+        lastError = `${ep.host}: HTTP ${res.status}`
+        continue
+      }
 
-    // Extract description — "X Followers, Y Following, Z Posts - Bio"
-    const descMatch = html.match(/<meta property="og:description" content="([^"]+)"/)
-    const desc      = descMatch?.[1] || ''
+      const raw = await res.json() as Record<string,unknown>
 
-    // Parse followers from description
-    const followersMatch = desc.match(/([\d,.]+[KkMmBb]?)\s*Followers?/i)
-    const followersRaw   = followersMatch?.[1]?.replace(/,/g, '') || ''
+      // Check for API-level errors
+      if (raw.error || raw.message?.toString().includes('not found') || raw.status === 'fail') {
+        lastError = String(raw.error || raw.message || 'Not found')
+        continue
+      }
 
-    function parseCount(s: string): number {
-      if (!s) return 0
-      const upper = s.toUpperCase()
-      if (upper.endsWith('M')) return Math.round(parseFloat(s) * 1_000_000)
-      if (upper.endsWith('K')) return Math.round(parseFloat(s) * 1_000)
-      if (upper.endsWith('B')) return Math.round(parseFloat(s) * 1_000_000_000)
-      return parseInt(s) || 0
-    }
+      const parsed = ep.parse(raw)
 
-    const followers = parseCount(followersRaw)
+      // Validate we got real data
+      if (!parsed.name || parsed.name === 'undefined') {
+        lastError = 'No profile data returned'
+        continue
+      }
 
-    // Extract bio — everything after "Posts - " in description
-    const bioMatch = desc.match(/\d+\s*Posts?\s*[-–]\s*(.+)/i)
-    const bio      = bioMatch?.[1]?.replace(/\s*-\s*See Instagram.*$/i, '').trim() || ''
-
-    // If Instagram blocked us (login wall), name will be generic
-    const blocked = name === 'Instagram' || name === 'Log in' || rawTitle.includes('Log in')
-
-    if (blocked) {
-      // Return basic info — at least the handle is confirmed to exist since we got 200
       return NextResponse.json({
         handle:    `@${handle}`,
-        name:      handle,
-        followers: null,  // null = unknown, not 0
-        bio:       '',
-        picture:   '',
-        note:      'Profile is private or Instagram limited public data',
+        name:      parsed.name,
+        followers: parsed.followers || null,
+        following: parsed.following || null,
+        posts:     parsed.posts || null,
+        bio:       parsed.bio,
+        picture:   parsed.picture,
+        verified:  parsed.verified,
+        category:  parsed.category,
       })
+
+    } catch (e) {
+      lastError = e instanceof Error ? e.message : 'Request failed'
     }
-
-    return NextResponse.json({
-      handle:    `@${handle}`,
-      name:      name || handle,
-      followers: followers || null,
-      bio,
-      picture,
-    })
-
-  } catch (e: unknown) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : 'Failed' }, { status: 500 })
   }
+
+  return NextResponse.json({ error: `Could not fetch profile: ${lastError}` }, { status: 404 })
 }
