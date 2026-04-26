@@ -177,26 +177,110 @@ function GenerateModal({channel,apiKey,initialKeyword,onClose,onDone}:{channel:C
 
 // ─── AddChannelModal ────────────────────────────────────────────────────────
 function AddChannelModal({onClose,onAdded}:{onClose:()=>void;onAdded:(c:Channel)=>void}){
+  const [handle,setHandle]=useState('')
+  const [searching,setSearching]=useState(false)
+  const [found,setFound]=useState<{name:string;followers:number;bio:string;picture:string}|null>(null)
   const [f,setF]=useState({name:'',handle:'',objective:'',audience:'',niche:'',color:COLORS[0]})
-  const [loading,setLoading]=useState(false);const [err,setErr]=useState('')
+  const [loading,setLoading]=useState(false)
+  const [err,setErr]=useState('')
+  const [mode,setMode]=useState<'search'|'manual'>('search')
   const s=(k:keyof typeof f,v:string)=>setF(p=>({...p,[k]:v}))
+
+  async function searchHandle(){
+    if(!handle.trim())return
+    setSearching(true);setErr('');setFound(null)
+    try{
+      const d=await af(`/api/instagram/public?handle=${encodeURIComponent(handle.replace('@',''))}`)
+      if(d.error)throw new Error(d.error)
+      setFound(d)
+      setF(p=>({...p,name:d.name||handle,handle:`@${handle.replace('@','')}`,niche:'Edtech'}))
+    }catch(e:unknown){setErr(e instanceof Error?e.message:'Could not find account — add manually instead')}
+    finally{setSearching(false)}
+  }
+
   async function save(){
-    if(!f.name||!f.objective||!f.audience)return setErr('Name, objective and audience required')
+    const data=mode==='search'?f:{...f}
+    if(!data.name||!data.objective||!data.audience)return setErr('Name, objective and audience required')
     setLoading(true);setErr('')
-    try{const d=await af('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(f)});onAdded(d)}
+    try{const d=await af('/api/channels',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});onAdded(d)}
     catch(e:unknown){setErr(e instanceof Error?e.message:'Failed');setLoading(false)}
   }
+
   return(
     <div className="overlay" onClick={e=>e.target===e.currentTarget&&onClose()}>
-      <div className="modal" style={{maxWidth:500}}>
-        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}><div style={{fontSize:18,fontWeight:600}}>Add Channel</div><button className="btn-ghost" onClick={onClose} style={{padding:'6px 10px'}}>✕</button></div>
-        <div style={{display:'grid',gap:14}}>
-          {([['Channel Name *','name','e.g. Testbook AP Channel'],['Instagram Handle','handle','@testbook_ap'],['Niche / Category','niche','e.g. EdTech, Career, Fitness'],['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],['Audience *','audience','e.g. UGC NET qualifiers']] as const).map(([l,k,ph])=>(
-            <div key={k}><div className="section-label">{l}</div><input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)}/></div>
+      <div className="modal" style={{maxWidth:520}}>
+        <div style={{display:'flex',justifyContent:'space-between',marginBottom:20}}>
+          <div style={{fontSize:18,fontWeight:600}}>Add Channel</div>
+          <button className="btn-ghost" onClick={onClose} style={{padding:'6px 10px'}}>✕</button>
+        </div>
+
+        {/* Mode toggle */}
+        <div style={{display:'flex',gap:8,marginBottom:20}}>
+          {(['search','manual'] as const).map(m=>(
+            <button key={m} onClick={()=>setMode(m)} className="btn-ghost" style={{flex:1,justifyContent:'center',fontSize:12,...(mode===m?{background:'rgba(233,69,96,0.15)',borderColor:'var(--accent)',color:'var(--accent)'}:{})}}>
+              {m==='search'?'🔍 Search Instagram':'✏️ Add manually'}
+            </button>
           ))}
-          <div><div className="section-label">Colour</div><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>{COLORS.map(c=><div key={c} onClick={()=>s('color',c)} style={{width:26,height:26,borderRadius:'50%',background:c,cursor:'pointer',border:f.color===c?'3px solid white':'3px solid transparent'}}/>)}</div></div>
-          {err&&<div style={{color:'#f87171',fontSize:12}}>{err}</div>}
-          <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}><button className="btn-ghost" onClick={onClose}>Cancel</button><button className="btn-primary" onClick={save} disabled={loading}>{loading?'Saving…':'Add Channel'}</button></div>
+        </div>
+
+        <div style={{display:'grid',gap:14}}>
+          {mode==='search'?(
+            <>
+              {/* Instagram search */}
+              <div>
+                <div className="section-label">Instagram Username</div>
+                <div style={{display:'flex',gap:8}}>
+                  <input className="input" placeholder="@testbook_ugc_net" value={handle}
+                    onChange={e=>setHandle(e.target.value)}
+                    onKeyDown={e=>e.key==='Enter'&&searchHandle()}
+                    style={{flex:1}}/>
+                  <button className="btn-primary" onClick={searchHandle} disabled={searching} style={{whiteSpace:'nowrap',padding:'0 16px'}}>
+                    {searching?'Searching…':'Search'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Found profile */}
+              {found&&(
+                <div style={{background:'var(--bg-elevated)',borderRadius:12,padding:14,border:'1px solid var(--border)'}}>
+                  <div style={{display:'flex',gap:12,alignItems:'center',marginBottom:12}}>
+                    {found.picture
+                      ?<img src={found.picture} alt="" style={{width:48,height:48,borderRadius:'50%',objectFit:'cover'}}/>
+                      :<div style={{width:48,height:48,borderRadius:'50%',background:f.color,display:'flex',alignItems:'center',justifyContent:'center',fontSize:18,fontWeight:700,color:'white'}}>{found.name[0]}</div>
+                    }
+                    <div>
+                      <div style={{fontSize:14,fontWeight:600}}>{found.name}</div>
+                      <div style={{fontSize:12,color:'var(--text-muted)'}}>@{handle.replace('@','')} · {found.followers.toLocaleString()} followers</div>
+                      {found.bio&&<div style={{fontSize:11,color:'var(--text-secondary)',marginTop:2}}>{found.bio.slice(0,80)}</div>}
+                    </div>
+                  </div>
+                  <div style={{fontSize:12,color:'var(--text-muted)',marginBottom:10}}>Fill in objective and audience to complete setup:</div>
+                  <div style={{display:'grid',gap:10}}>
+                    <div><div className="section-label">Channel Objective *</div><input className="input" placeholder="e.g. Help aspirants crack UGC NET" value={f.objective} onChange={e=>s('objective',e.target.value)}/></div>
+                    <div><div className="section-label">Target Audience *</div><input className="input" placeholder="e.g. PG students preparing for UGC NET" value={f.audience} onChange={e=>s('audience',e.target.value)}/></div>
+                    <div><div className="section-label">Niche</div><input className="input" placeholder="e.g. EdTech, Career, Fitness" value={f.niche} onChange={e=>s('niche',e.target.value)}/></div>
+                  </div>
+                </div>
+              )}
+            </>
+          ):(
+            /* Manual mode */
+            <>
+              {([['Channel Name *','name','e.g. Testbook AP Channel'],['Instagram Handle','handle','@testbook_ap'],['Niche / Category','niche','e.g. EdTech, Career, Fitness'],['Objective *','objective','e.g. Help NET qualifiers land AP jobs'],['Audience *','audience','e.g. UGC NET qualifiers']] as const).map(([l,k,ph])=>(
+                <div key={k}><div className="section-label">{l}</div><input className="input" placeholder={ph} value={f[k]} onChange={e=>s(k,e.target.value)}/></div>
+              ))}
+              <div><div className="section-label">Colour</div><div style={{display:'flex',gap:8,flexWrap:'wrap',marginTop:4}}>{COLORS.map(c=><div key={c} onClick={()=>s('color',c)} style={{width:26,height:26,borderRadius:'50%',background:c,cursor:'pointer',border:f.color===c?'3px solid white':'3px solid transparent'}}/>)}</div></div>
+            </>
+          )}
+
+          {err&&<div style={{color:'#f87171',fontSize:12,padding:'8px 12px',background:'rgba(248,113,113,0.1)',borderRadius:8}}>{err}</div>}
+
+          {(found||mode==='manual')&&(
+            <div style={{display:'flex',gap:10,justifyContent:'flex-end'}}>
+              <button className="btn-ghost" onClick={onClose}>Cancel</button>
+              <button className="btn-primary" onClick={save} disabled={loading}>{loading?'Saving…':'Add Channel'}</button>
+            </div>
+          )}
         </div>
       </div>
     </div>
